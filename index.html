@@ -238,6 +238,57 @@ body>*{position:relative;z-index:1;}
 .lk-vlow{background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.2);color:#d8b4fe;}
 
 .loader{text-align:center;padding:40px;color:var(--text3);font-size:12px;}
+.tab.chaos-tab.active{color:#fb923c;background:rgba(251,146,60,0.15);border-color:rgba(251,146,60,0.3);}
+#page-chaos{overflow-y:auto;background:transparent;flex:1;}
+#chaos-inner{padding:12px;max-width:860px;margin:0 auto;}
+#chaos-banner{border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;background:rgba(60,20,5,0.6);border:1px solid rgba(251,146,60,0.25);backdrop-filter:var(--glass);box-shadow:0 4px 24px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.05);}
+#chaos-banner h2{font-size:15px;font-weight:600;color:#fb923c;}
+#chaos-banner p{font-size:11px;color:var(--text2);margin-top:2px;}
+#chaos-scan-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:9px 14px;background:rgba(18,8,36,0.6);border:1px solid rgba(251,146,60,0.15);border-radius:var(--radius-sm);backdrop-filter:var(--glass-sm);}
+.chaos-dot{width:7px;height:7px;border-radius:50%;background:#fb923c;animation:pulse 1s infinite;flex-shrink:0;box-shadow:0 0 7px rgba(251,146,60,0.7);}
+#chaos-count{color:#fb923c;font-weight:600;font-size:11px;}
+#chaos-last{font-size:10px;color:var(--text3);margin-left:auto;font-family:"DM Mono",monospace;}
+.chaos-card{background:rgba(25,8,5,0.6);border:1px solid rgba(251,146,60,0.18);border-radius:var(--radius);padding:14px;margin-bottom:10px;backdrop-filter:var(--glass);position:relative;overflow:hidden;transition:all 0.22s cubic-bezier(.4,0,.2,1);}
+.chaos-card::after{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(251,146,60,0.5),transparent);}
+.chaos-card:hover{border-color:rgba(251,146,60,0.35);transform:translateY(-2px);box-shadow:0 8px 32px rgba(251,146,60,0.15);}
+.chaos-card.up-card{border-color:rgba(134,239,172,0.2);}
+.chaos-card.up-card::after{background:linear-gradient(90deg,transparent,rgba(134,239,172,0.4),transparent);}
+.chaos-card.down-card{border-color:rgba(252,165,165,0.2);}
+.chaos-card.down-card::after{background:linear-gradient(90deg,transparent,rgba(252,165,165,0.4),transparent);}
+.chaos-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
+.chaos-sym{font-size:18px;font-weight:600;letter-spacing:-0.2px;}
+.chaos-sym.c-up{color:#86efac;}
+.chaos-sym.c-down{color:#fca5a5;}
+.chaos-sym.c-wild{color:#fb923c;}
+.chaos-nam{font-size:10px;color:var(--text2);margin-top:2px;}
+.chaos-right{text-align:right;}
+.chaos-price{font-size:18px;font-weight:600;font-family:"DM Mono",monospace;}
+.chaos-pct{font-size:12px;font-weight:600;margin-top:2px;font-family:"DM Mono",monospace;}
+.chaos-cw{position:relative;height:110px;width:100%;margin:8px 0;}
+.chaos-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;}
+.chaos-metric{background:rgba(40,15,5,0.5);border:1px solid rgba(251,146,60,0.1);border-radius:var(--radius-sm);padding:8px;text-align:center;}
+.chaos-metric.green-m{background:rgba(20,50,20,0.4);border-color:rgba(134,239,172,0.1);}
+.chaos-metric.red-m{background:rgba(50,10,10,0.4);border-color:rgba(252,165,165,0.1);}
+.chaos-ml{font-size:9px;color:var(--text2);font-weight:500;text-transform:uppercase;letter-spacing:0.3px;}
+.chaos-mv{font-size:12px;font-weight:600;margin-top:3px;font-family:"DM Mono",monospace;}
+.volatility-bar-wrap{flex:1;}
+.vol-label{font-size:9px;color:var(--text2);font-weight:500;margin-bottom:4px;display:flex;justify-content:space-between;}
+.vol-track{height:4px;background:rgba(40,15,5,0.6);border-radius:4px;overflow:hidden;}
+.vol-fill{height:100%;border-radius:4px;transition:width 1s;}
+.vol-fill.extreme{background:linear-gradient(90deg,#dc2626,#fb923c,#fbbf24);box-shadow:0 0 8px rgba(251,146,60,0.5);}
+.vol-fill.high{background:linear-gradient(90deg,#fb923c,#fbbf24);box-shadow:0 0 6px rgba(251,146,60,0.3);}
+.vol-fill.med{background:linear-gradient(90deg,#a855f7,#c084fc);}
+.chaos-badges{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
+.cbadge{font-size:9px;padding:2px 8px;border-radius:20px;font-weight:600;letter-spacing:0.3px;}
+.cb-wild{background:rgba(251,146,60,0.15);color:#fb923c;border:1px solid rgba(251,146,60,0.3);}
+.cb-spike{background:rgba(134,239,172,0.12);color:#86efac;border:1px solid rgba(134,239,172,0.22);}
+.cb-crash{background:rgba(252,165,165,0.12);color:#fca5a5;border:1px solid rgba(252,165,165,0.22);}
+.cb-swing{background:rgba(168,85,247,0.15);color:#d8b4fe;border:1px solid rgba(168,85,247,0.25);}
+.cb-moon{background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.25);}
+.chaos-bot{display:flex;align-items:center;gap:10px;}
+.chaos-empty{text-align:center;padding:60px 20px;color:var(--text2);}
+.chaos-empty h3{font-size:15px;font-weight:600;margin-bottom:8px;color:var(--text2);}
+.chaos-empty p{font-size:12px;line-height:1.7;color:var(--text3);}
 </style>
 </head>
 <body>
@@ -264,6 +315,7 @@ body>*{position:relative;z-index:1;}
   <div class="tab ht" onclick="showPage('hot',this)">🔥 Hot Plays</div>
   <div class="tab bn-tab" onclick="showPage('buynow',this)">⚡ Buy Now</div>
   <div class="tab" onclick="showPage('watch',this)">Watchlist</div>
+  <div class="tab chaos-tab" onclick="showPage('chaos',this)">🌪 Chaos</div>
 </div>
 
 <!-- MARKET -->
@@ -314,6 +366,23 @@ body>*{position:relative;z-index:1;}
 <!-- WATCHLIST -->
 <div id="page-watch" class="page">
   <div id="watch-list" style="overflow-y:auto;padding:12px;background:transparent;"><div class="loader">Loading...</div></div>
+</div>
+
+<!-- CHAOS TAB -->
+<div id="page-chaos" class="page">
+  <div id="chaos-inner">
+    <div id="chaos-banner">
+      <h2>🌪 Extreme Movers</h2>
+      <p>Assets swinging 1000%+ in 24h — massive volatility, high risk, high reward</p>
+    </div>
+    <div id="chaos-scan-bar">
+      <div class="chaos-dot"></div>
+      <span style="font-size:11px;color:var(--text2);">Scanning for extreme volatility</span>
+      <span id="chaos-count">—</span>
+      <span id="chaos-last"></span>
+    </div>
+    <div id="chaos-grid"><div class="loader">Scanning for extreme movers...</div></div>
+  </div>
 </div>
 
 <!-- MODAL -->
@@ -918,11 +987,144 @@ function showPage(p,el){
   if(p==='hot'){if(!hotTimerInterval)startHotTimer();else renderHot();}
   if(p==='watch')renderWatchlist();
   if(p==='buynow')renderBuyNow();
+  if(p==='chaos'){renderChaos();setInterval(function(){if(document.getElementById('page-chaos').classList.contains('active'))renderChaos();},20000);}
 }
 
 function clock(){document.getElementById('clk').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 setInterval(clock,1000);clock();
 setInterval(function(){if(document.getElementById('page-buynow').classList.contains('active'))renderBuyNow();},30000);
+
+
+function chaosScore(s){
+  var abs=Math.abs(s.changePct);
+  var range=s.high>0&&s.low>0?(s.high-s.low)/s.low*100:abs;
+  var score=0;
+  // Range volatility (primary signal)
+  score+=Math.min(range*0.4,50);
+  // 24h change magnitude
+  score+=Math.min(abs*0.3,30);
+  // Direction swings from history
+  if(s.history&&s.history.length>=6){
+    var prices=s.history.slice(-12).map(function(h){return h.price;});
+    var swings=0;
+    for(var i=2;i<prices.length;i++){
+      var prev=prices[i-1]-prices[i-2];
+      var curr=prices[i]-prices[i-1];
+      if((prev>0&&curr<0)||(prev<0&&curr>0))swings++;
+    }
+    score+=Math.min(swings*4,20);
+  }
+  return Math.min(score,100);
+}
+
+function getChaosBadges(s){
+  var abs=Math.abs(s.changePct);
+  var up=s.changePct>=0;
+  var range=s.high>0&&s.low>0?(s.high-s.low)/s.low*100:abs;
+  var badges='';
+  if(range>5000)badges+='<span class="cbadge cb-moon">🌕 INSANE SWING</span>';
+  else if(range>2000)badges+='<span class="cbadge cb-wild">🌪 EXTREME WILD</span>';
+  else if(range>1000)badges+='<span class="cbadge cb-wild">⚡ MEGA VOLATILE</span>';
+  if(abs>5000)badges+='<span class="cbadge cb-moon">🚀 5000%+ MOVE</span>';
+  else if(abs>1000)badges+='<span class="cbadge cb-moon">🌙 1000%+ MOVE</span>';
+  if(up&&abs>500)badges+='<span class="cbadge cb-spike">📈 MASSIVE PUMP</span>';
+  if(!up&&abs>500)badges+='<span class="cbadge cb-crash">📉 MAJOR CRASH</span>';
+  if(s.history&&s.history.length>=6){
+    var prices=s.history.slice(-8).map(function(h){return h.price;});
+    var swings=0;
+    for(var i=2;i<prices.length;i++){var pv=prices[i-1]-prices[i-2];var cv=prices[i]-prices[i-1];if((pv>0&&cv<0)||(pv<0&&cv>0))swings++;}
+    if(swings>=4)badges+='<span class="cbadge cb-swing">↕ DIRECTION FLIP</span>';
+  }
+  if(!badges)badges='<span class="cbadge cb-wild">⚠ HIGH VOLATILITY</span>';
+  return badges;
+}
+
+function getVolClass(pct){
+  if(pct>=80)return'extreme';
+  if(pct>=50)return'high';
+  return'med';
+}
+
+function renderChaos(){
+  var grid=document.getElementById('chaos-grid');if(!grid)return;
+  // Gather ALL assets
+  var allIds=[...new Set([...STOCKS,...LOW_STOCKS,...OTC_STOCKS,...CRYPTO_IDS,...PENNY_IDS])];
+  var results=[];
+  allIds.forEach(function(id){
+    var s=state[id];if(!s||!s.price||s.price<=0)return;
+    var abs=Math.abs(s.changePct);
+    var range=s.high>0&&s.low>0?(s.high-s.low)/s.low*100:abs;
+    // Include if: range > 200%, OR abs change > 500%, OR extremely volatile history
+    var wildSwings=false;
+    if(s.history&&s.history.length>=6){
+      var prices=s.history.slice(-8).map(function(h){return h.price;});
+      var swings=0;
+      for(var i=2;i<prices.length;i++){var pv=prices[i-1]-prices[i-2];var cv=prices[i]-prices[i-1];if((pv>0&&cv<0)||(pv<0&&cv>0))swings++;}
+      if(swings>=3)wildSwings=true;
+    }
+    if(abs>=200||range>=200||wildSwings){
+      results.push({s:s,abs:abs,range:range,score:chaosScore(s)});
+    }
+  });
+
+  // Sort by combined volatility score
+  results.sort(function(a,b){return b.score-a.score;});
+
+  document.getElementById('chaos-count').textContent=results.length+' extreme movers';
+  document.getElementById('chaos-last').textContent=new Date().toLocaleTimeString();
+
+  if(!results.length){
+    grid.innerHTML='<div class="chaos-empty"><h3>No extreme movers right now</h3><p>This tab shows assets with 1000%+ swings or extreme volatility.<br>Markets may be calm right now. Check back during high activity periods.<br><br>Tip: Crypto markets are most chaotic during major news events.</p></div>';
+    return;
+  }
+
+  grid.innerHTML='';
+  results.forEach(function(item){
+    var s=item.s;var abs=item.abs;var range=item.range;var score=item.score;
+    var up=s.changePct>=0;var sym=s.symbol||s.id;
+    var volPct=Math.min(score,100);
+    var volClass=getVolClass(volPct);
+    var cardClass=abs>1000?(up?'up-card':'down-card'):'';
+    var symClass=abs>1000?(up?'c-up':'c-down'):'c-wild';
+    var buyHref=s.type==='crypto'?'https://coinbase.com/price/'+s.id:'https://robinhood.com/stocks/'+s.id;
+
+    // Range hi/lo
+    var hiPrice=s.high||s.price;var loPrice=s.low||(s.price*0.5);
+    var rangeStr=range>0?range.toFixed(0)+'%':'—';
+    var swingStr=abs>0?abs.toFixed(0)+'%':'—';
+
+    var card=document.createElement('div');
+    card.className='chaos-card '+cardClass;
+    card.innerHTML=
+      '<div class="chaos-top">'
+      +'<div><div class="chaos-sym '+symClass+'">'+sym.slice(0,8)+'</div><div class="chaos-nam">'+s.name+' · '+s.type+(s.otc?' · OTC':'')+'</div></div>'
+      +'<div class="chaos-right"><div class="chaos-price '+(up?'up':'down')+'">'+fp(s.price)+'</div><div class="chaos-pct '+(up?'up':'down')+'">'+(up?'+':'')+s.changePct.toFixed(2)+'%</div></div>'
+      +'</div>'
+      +'<div class="chaos-badges">'+getChaosBadges(s)+'</div>'
+      +'<div class="chaos-cw"><canvas id="cc-'+s.id+'" role="img" aria-label="'+s.id+' chaos chart"></canvas></div>'
+      +'<div class="chaos-metrics">'
+      +'<div class="chaos-metric '+(up?'green-m':'red-m')+'"><div class="chaos-ml">24h change</div><div class="chaos-mv '+(up?'up':'down')+'">'+(up?'+':'')+swingStr+'</div></div>'
+      +'<div class="chaos-metric"><div class="chaos-ml">24h range</div><div class="chaos-mv" style="color:#fb923c;">'+rangeStr+'</div></div>'
+      +'<div class="chaos-metric"><div class="chaos-ml">$50 buys</div><div class="chaos-mv" style="color:#fb923c;">'+fmtU(s.price>0?50/s.price:0)+'</div></div>'
+      +'</div>'
+      +'<div class="chaos-bot">'
+      +'<div class="volatility-bar-wrap"><div class="vol-label"><span>Volatility Index</span><span style="color:#fb923c;font-weight:600;">'+volPct.toFixed(0)+'/100</span></div><div class="vol-track"><div class="vol-fill '+volClass+'" style="width:'+volPct+'%"></div></div></div>'
+      +'<div class="card-btns" style="margin-left:10px;"><button class="info-btn" onclick="openInfo(''+s.id+'')">📊</button><a class="cbuy" style="background:linear-gradient(135deg,#c2410c,#ea580c);box-shadow:0 2px 10px rgba(234,88,12,0.35);" href="'+buyHref+'" target="_blank">'+(s.type==='crypto'?'Coinbase':'Robinhood')+' ↗</a></div>'
+      +'</div>';
+
+    grid.appendChild(card);
+    setTimeout((function(sid,sh,sup){return function(){makeChaosChart('cc-'+sid,sh,sup);};})(s.id,s.history,up),80);
+  });
+}
+
+function makeChaosChart(canvasId,history,up){
+  var ctx=document.getElementById(canvasId);if(!ctx)return;
+  if(charts[canvasId])charts[canvasId].destroy();
+  var data=(history||[]).slice(-48).map(function(x){return x.price;});
+  var labels=(history||[]).slice(-48).map(function(x){var d=new Date(x.t);return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');});
+  var grad=ctx.getContext('2d');
+  charts[canvasId]=new Chart(ctx,{type:'line',data:{labels:labels,datasets:[{data:data,borderColor:'#fb923c',borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.3,fill:true,backgroundColor:'rgba(251,146,60,0.07)'}]},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(16,8,32,0.92)',borderColor:'rgba(251,146,60,0.25)',borderWidth:1,padding:8,titleColor:'#9d8fc4',bodyColor:'#e9d5ff',callbacks:{label:function(v){return fp(v.raw);}}}},scales:{x:{ticks:{color:'#6d4a9c',font:{size:9},maxTicksLimit:5},grid:{color:'rgba(251,146,60,0.04)'}},y:{ticks:{color:'#6d4a9c',font:{size:9},callback:function(v){return fp(v);}},grid:{color:'rgba(251,146,60,0.04)'},position:'right'}}}});
+}
 
 init();
 </script>
