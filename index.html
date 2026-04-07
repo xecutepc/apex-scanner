@@ -311,7 +311,7 @@ body>*{position:relative;z-index:1;}
 <div id="tape"><div id="tape-inner"></div></div>
 
 <div id="tabs">
-  <div class="tab active" onclick="showPage('mkt',this)">Market</div>
+  <div class="tab active" onclick="handleMarketTab(this)">Market</div>
   <div class="tab ht" onclick="showPage('hot',this)">🔥 Hot Plays</div>
   <div class="tab bn-tab" onclick="showPage('buynow',this)">⚡ Buy Now</div>
   <div class="tab" onclick="showPage('watch',this)">Watchlist</div>
@@ -596,7 +596,7 @@ function renderSidebar(){
       var s=state[id];if(!s)return;var up=s.changePct>=0;var sym=s.symbol||id;
       var div=document.createElement('div');div.className='mc';div.id='mc-'+id;
       div.innerHTML='<div class="mc-sym">'+sym.slice(0,7)+'</div><canvas class="mc-spark" id="msp-'+id+'" role="img" aria-label="'+id+'"></canvas><div class="mc-r"><div class="mc-p '+(up?'up':'down')+'" id="mcp-'+id+'">'+fp(s.price)+'</div><div class="mc-c '+(up?'up':'down')+'" id="mcc-'+id+'">'+(up?'+':'')+s.changePct.toFixed(2)+'%</div></div>';
-      div.onclick=function(){selectAsset(id);if(window.innerWidth<600)toggleSidebar();};
+      div.onclick=function(){selectAsset(id);};
       sb.appendChild(div);setTimeout(function(){makeSpark('msp-'+id,s.history,up);},80);
     });
   }
@@ -618,6 +618,22 @@ function toggleSidebar(){
   sb.classList.toggle('collapsed',!sidebarOpen);
   btn.innerHTML=sidebarOpen?'&#9664;':'&#9654;';
 }
+function handleMarketTab(el){
+  var onMarket=document.getElementById('page-mkt').classList.contains('active');
+  if(onMarket){
+    // already on market tab — toggle sidebar
+    toggleSidebar();
+  } else {
+    showPage('mkt',el);
+    openSidebar();
+  }
+}
+function openSidebar(){
+  if(!sidebarOpen){sidebarOpen=true;var sb=document.getElementById('sidebar');var btn=document.getElementById('toggle-btn');sb.classList.remove('collapsed');btn.innerHTML='&#9664;';}
+}
+function closeSidebar(){
+  if(sidebarOpen){sidebarOpen=false;var sb=document.getElementById('sidebar');var btn=document.getElementById('toggle-btn');sb.classList.add('collapsed');btn.innerHTML='&#9654;';}
+}
 
 // ── DETAIL ──────────────────────────────────────────────────────────────────
 function selectAsset(id){
@@ -625,6 +641,8 @@ function selectAsset(id){
   document.querySelectorAll('.mc').forEach(function(c){c.classList.remove('sel');});
   var mc=document.getElementById('mc-'+id);if(mc)mc.classList.add('sel');
   buildDetailPanel(id);
+  // Close sidebar when an asset is selected so chart takes full screen
+  closeSidebar();
 }
 
 function buildDetailPanel(id){
