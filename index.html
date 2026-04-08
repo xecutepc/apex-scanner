@@ -290,6 +290,7 @@ var AK=_a.join('');var AS=_b.join('');var PK=_c.join('');
 var AB='https://data.alpaca.markets/v2';
 var PB='https://api.polygon.io';
 var BIN='https://api.binance.com/api/v3';
+var CORS='https://corsproxy.io/?url=';
 
 // ── TOP 500 CRYPTO (Binance USDT pairs by market cap) ─────────────────────────
 var CRYPTO_SYMS=[
@@ -394,7 +395,11 @@ function ftch(url,opts,ms){
     .catch(function(e){clearTimeout(tid);throw e;});
 }
 function aFetch(url){return ftch(url,{headers:{'APCA-API-KEY-ID':AK,'APCA-API-SECRET-KEY':AS}},8000).then(function(r){return r.json();}).catch(function(){return{};});}
-function bFetch(url){return ftch(url,{},8000).then(function(r){return r.json();}).catch(function(){return null;});}
+function bFetch(url){
+  // Route through CORS proxy since Binance blocks direct browser requests
+  var proxied=CORS+encodeURIComponent(url);
+  return ftch(proxied,{},10000).then(function(r){return r.json();}).catch(function(){return null;});
+}
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 function init(){
