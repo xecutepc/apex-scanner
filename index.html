@@ -290,7 +290,7 @@ var AK=_a.join('');var AS=_b.join('');var PK=_c.join('');
 var AB='https://data.alpaca.markets/v2';
 var PB='https://api.polygon.io';
 var BIN='https://api.binance.com/api/v3';
-var CORS='https://corsproxy.io/?url=';
+var CG='https://api.coingecko.com/api/v3';
 
 // ── TOP 500 CRYPTO (Binance USDT pairs by market cap) ─────────────────────────
 var CRYPTO_SYMS=[
@@ -396,9 +396,10 @@ function ftch(url,opts,ms){
 }
 function aFetch(url){return ftch(url,{headers:{'APCA-API-KEY-ID':AK,'APCA-API-SECRET-KEY':AS}},8000).then(function(r){return r.json();}).catch(function(){return{};});}
 function bFetch(url){
-  // Route through CORS proxy since Binance blocks direct browser requests
-  var proxied=CORS+encodeURIComponent(url);
-  return ftch(proxied,{},10000).then(function(r){return r.json();}).catch(function(){return null;});
+  return ftch(url,{},10000).then(function(r){return r.json();}).catch(function(){return null;});
+}
+function cgFetch(url){
+  return ftch(CG+url,{},10000).then(function(r){return r.json();}).catch(function(){return null;});
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -441,73 +442,57 @@ function init(){
 }
 
 async function loadAllPrices(){
-  // Step 1: Get ALL prices instantly (~60KB, fast)
-  // /ticker/price returns {symbol, price} for everything
+  // Use CoinGecko - works from browser with no CORS issues
+  // Fetch top 250 coins by market cap in batches of 250
   try{
-    var prices=await bFetch(BIN+'/ticker/price');
-    if(Array.isArray(prices)&&prices.length>0){
-      prices.forEach(function(t){
-        if(!t.symbol||!t.symbol.endsWith('USDT'))return;
-        var id='bn_'+t.symbol;
+    var page1=await cgFetch('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=24h');
+    if(Array.isArray(page1)&&page1.length){
+      page1.forEach(function(c){
+        var sym=(c.symbol||'').toUpperCase();
+        var binSym=sym+'USDT';
+        var id='bn_'+binSym;
+        // Update existing state or create new
         if(!state[id]){
-          var base=t.symbol.replace('USDT','');
-          state[id]=mkA(id,base,base,'crypto',{binSym:t.symbol});
+          state[id]=mkA(id,sym,c.name||sym,'crypto',{binSym:binSym,cgId:c.id});
         }
-        var price=parseFloat(t.price)||0;
-        if(price>0)state[id].price=price;
-      });
-      renderSB();
-      renderTape();
-    }
-  }catch(e){}
-
-  // Step 2: Get 24hr stats for our specific coins in one call
-  // Use the correct Binance format: symbols=["BTC","ETH"]
-  try{
-    var symsParam='["'+CRYPTO_SYMS.join('","')+'"]';
-    var stats=await bFetch(BIN+'/ticker/24hr?symbols='+symsParam);
-    if(Array.isArray(stats)&&stats.length>0){
-      stats.forEach(function(t){
-        var id='bn_'+t.symbol;
-        if(!state[id])return;
-        state[id].price=parseFloat(t.lastPrice)||state[id].price;
-        state[id].change=parseFloat(t.priceChange)||0;
-        state[id].changePct=parseFloat(t.priceChangePercent)||0;
-        state[id].high=parseFloat(t.highPrice)||0;
-        state[id].low=parseFloat(t.lowPrice)||0;
-        state[id].vol=parseFloat(t.quoteVolume)||0;
+        state[id].cgId=c.id;
+        state[id].price=c.current_price||0;
+        state[id].change=c.price_change_24h||0;
+        state[id].changePct=c.price_change_percentage_24h||0;
+        state[id].high=c.high_24h||0;
+        state[id].low=c.low_24h||0;
+        state[id].vol=c.total_volume||0;
         refreshMC(id);
         if(selId===id)refreshDetailNums(id);
       });
       renderSB();
       renderTape();
-      return;
     }
   }catch(e){}
 
-  // Step 3: Fallback - fetch each coin individually (slower but works)
-  for(var i=0;i<Math.min(CRYPTO_SYMS.length,50);i++){
-    try{
-      var sym=CRYPTO_SYMS[i];
-      var d=await bFetch(BIN+'/ticker/24hr?symbol='+sym);
-      if(d&&d.lastPrice){
-        var id='bn_'+sym;
-        if(state[id]){
-          state[id].price=parseFloat(d.lastPrice)||0;
-          state[id].changePct=parseFloat(d.priceChangePercent)||0;
-          state[id].change=parseFloat(d.priceChange)||0;
-          state[id].high=parseFloat(d.highPrice)||0;
-          state[id].low=parseFloat(d.lowPrice)||0;
-          state[id].vol=parseFloat(d.quoteVolume)||0;
-          refreshMC(id);
-          if(selId===id)refreshDetailNums(id);
-        }
-      }
-    }catch(e){}
-    if(i%10===9){renderSB();renderTape();await sleep(100);}
-  }
-  renderSB();
-  renderTape();
+  // Page 2 - next 250 coins
+  try{
+    await sleep(1500); // respect CG rate limit
+    var page2=await cgFetch('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=2&price_change_percentage=24h');
+    if(Array.isArray(page2)&&page2.length){
+      page2.forEach(function(c){
+        var sym=(c.symbol||'').toUpperCase();
+        var binSym=sym+'USDT';
+        var id='bn_'+binSym;
+        if(!state[id])state[id]=mkA(id,sym,c.name||sym,'crypto',{binSym:binSym,cgId:c.id});
+        state[id].cgId=c.id;
+        state[id].price=c.current_price||0;
+        state[id].change=c.price_change_24h||0;
+        state[id].changePct=c.price_change_percentage_24h||0;
+        state[id].high=c.high_24h||0;
+        state[id].low=c.low_24h||0;
+        state[id].vol=c.total_volume||0;
+        refreshMC(id);
+      });
+      renderSB();
+      renderTape();
+    }
+  }catch(e){}
 }
 
 async function refreshStockPrices(){
@@ -540,20 +525,22 @@ async function refreshStockPrices(){
 
 // Hourly scan for new assets on Binance and Alpaca
 async function scanForNewAssets(){
+  // CoinGecko trending coins - catches new/hot coins automatically
   try{
-    // Check Binance for new USDT pairs
-    var d=await bFetch(BIN+'/exchangeInfo');
-    if(d&&d.symbols){
-      d.symbols.forEach(function(s){
-        if(s.status==='TRADING'&&s.quoteAsset==='USDT'&&!state['bn_'+s.symbol]){
-          var base=s.symbol.replace('USDT','');
-          state['bn_'+s.symbol]=mkA('bn_'+s.symbol,base,base,'crypto',{binSym:s.symbol});
-          CRYPTO_SYMS.push(s.symbol);
+    var trending=await cgFetch('/search/trending');
+    if(trending&&trending.coins){
+      trending.coins.forEach(function(c){
+        var sym=(c.item.symbol||'').toUpperCase();
+        var binSym=sym+'USDT';
+        var id='bn_'+binSym;
+        if(!state[id]){
+          state[id]=mkA(id,sym,c.item.name||sym,'crypto',{binSym:binSym,cgId:c.item.id});
+          CRYPTO_SYMS.push(binSym);
         }
       });
     }
   }catch(e){}
-  // Reload prices for any new assets
+  // Refresh all prices
   loadAllPrices();
 }
 
@@ -625,13 +612,33 @@ var TF_INTERVAL={'10M':'1m','1H':'5m','1D':'1h','1W':'4h','1M':'1d'};
 var TF_LIMIT={'10M':10,'1H':12,'1D':48,'1W':42,'1M':30};
 
 async function getBinanceKlines(sym,tf){
+  // Use Binance WebSocket klines if available, else CoinGecko
   try{
     var interval=TF_INTERVAL[tf]||'1h';
     var limit=TF_LIMIT[tf]||48;
     var d=await bFetch(BIN+'/klines?symbol='+sym+'&interval='+interval+'&limit='+limit);
-    if(!Array.isArray(d))return[];
-    return d.map(function(k){return{t:k[0],price:parseFloat(k[4])};});
-  }catch(e){return[];}
+    if(Array.isArray(d)&&d.length)return d.map(function(k){return{t:k[0],price:parseFloat(k[4])};});
+  }catch(e){}
+  // Fallback to CoinGecko
+  return getCGHistory(sym,tf);
+}
+
+async function getCGHistory(binSym,tf){
+  // Find cgId from state
+  var id='bn_'+binSym;
+  var cgId=state[id]&&state[id].cgId?state[id].cgId:binSym.replace('USDT','').toLowerCase();
+  var days={'10M':1,'1H':1,'1D':1,'1W':7,'1M':30};
+  var d=days[tf]||1;
+  try{
+    var data=await cgFetch('/coins/'+cgId+'/market_chart?vs_currency=usd&days='+d);
+    if(data&&data.prices&&data.prices.length){
+      var pts=data.prices.map(function(p){return{t:p[0],price:p[1]};});
+      if(tf==='10M')pts=pts.slice(-10);
+      else if(tf==='1H')pts=pts.slice(-12);
+      return pts;
+    }
+  }catch(e){}
+  return [];
 }
 
 async function getStockBars(sym,tf){
