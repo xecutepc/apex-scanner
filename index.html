@@ -544,93 +544,137 @@ function connectAlpacaWS(){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-async function init(){
-  setStatus('Loading...');
-  renderSB();
-
-  // ── STEP 1: Fetch ALL Binance tickers ──────────────────────────────────────
-  setStatus('Fetching crypto...');
-  var allTickers = await getAllBinanceTickers();
-  
-  // Filter: USDT pairs only, with real volume
-  var cryptoTickers = allTickers.filter(function(t){
-    return t.symbol && t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume||t.q||0) > 10000;
-  }).sort(function(a,b){
-    return parseFloat(b.quoteVolume||b.q||0) - parseFloat(a.quoteVolume||a.q||0);
-  }).slice(0, 500); // top 500 by volume
-
-  // Create state for all crypto
-  cryptoTickers.forEach(function(t){
-    var sym = t.symbol;
-    var base = sym.replace('USDT','');
-    var id = 'bn_'+sym;
-    state[id] = mkAsset(id, base, base+'/USDT', 'crypto', {
-      binSym: sym,
-      price:     parseFloat(t.lastPrice||t.c||0),
-      change:    parseFloat(t.priceChange||0),
-      changePct: parseFloat(t.priceChangePercent||0),
-      high:      parseFloat(t.highPrice||t.h||0),
-      low:       parseFloat(t.lowPrice||t.l||0),
-      vol:       parseFloat(t.quoteVolume||t.q||0)
-    });
-  });
-
-  var cryptoCount = cryptoTickers.length;
-  setStatus('Got '+cryptoCount+' crypto...');
-  renderSB();
-  renderTape();
-
-  // ── STEP 2: Fetch ALL Alpaca stock assets ──────────────────────────────────
-  setStatus('Fetching stocks...');
-  var allStocks = await getAllAlpacaAssets();
-  
-  allStocks.forEach(function(a){
-    var id = 'st_'+a.symbol;
-    if(!state[id]) state[id] = mkAsset(id, a.symbol, a.name||a.symbol, 'stock');
-  });
-
-  // OTC stocks via Polygon (small list, fetched separately)
-  ['SIGY','DPLS','EPAZ','BFCF','GTSO','LIQT','TPVG','ABML','GFAI','HMBL'].forEach(function(sym){
-    var id='st_'+sym;
-    if(!state[id]) state[id] = mkAsset(id,sym,sym,'stock',{otc:true});
-  });
-
-  var stockCount = allStocks.length;
-  setStatus('Got '+stockCount+' stocks...');
-  renderSB();
-
-  // ── STEP 3: Connect WebSockets immediately ─────────────────────────────────
-  var binSyms = cryptoTickers.map(function(t){return t.symbol;});
-  connectBinanceWS(binSyms);
-  connectAlpacaWS();
-
-  // Select BTC right away
-  var firstId = 'bn_BTCUSDT';
-  if(state[firstId]) selectA(firstId);
-
+function init(){
+  // ── Render UI immediately — no awaiting ───────────────────────────────────
   setStatus('Live ⚡');
+  renderSB();
 
-  // ── STEP 4: Load prices + history in background ────────────────────────────
-  // Load crypto history for top 100 (Binance klines, fast)
-  loadCryptoHistory(cryptoTickers.slice(0,100));
+  // Seed BTC/ETH/major stocks instantly so UI isn't empty
+  var quickSeeds=[
+    {id:'bn_BTCUSDT',sym:'BTC',name:'Bitcoin',binSym:'BTCUSDT'},
+    {id:'bn_ETHUSDT',sym:'ETH',name:'Ethereum',binSym:'ETHUSDT'},
+    {id:'bn_SOLUSDT',sym:'SOL',name:'Solana',binSym:'SOLUSDT'},
+    {id:'bn_BNBUSDT',sym:'BNB',name:'BNB',binSym:'BNBUSDT'},
+    {id:'bn_XRPUSDT',sym:'XRP',name:'XRP',binSym:'XRPUSDT'},
+    {id:'bn_DOGEUSDT',sym:'DOGE',name:'Dogecoin',binSym:'DOGEUSDT'},
+    {id:'bn_SHIBUSDT',sym:'SHIB',name:'Shiba Inu',binSym:'SHIBUSDT'},
+    {id:'bn_PEPEUSDT',sym:'PEPE',name:'Pepe',binSym:'PEPEUSDT'},
+    {id:'bn_BONKUSDT',sym:'BONK',name:'Bonk',binSym:'BONKUSDT'},
+    {id:'bn_ADAUSDT',sym:'ADA',name:'Cardano',binSym:'ADAUSDT'},
+    {id:'st_AAPL',sym:'AAPL',name:'Apple',type:'stock'},
+    {id:'st_NVDA',sym:'NVDA',name:'NVIDIA',type:'stock'},
+    {id:'st_TSLA',sym:'TSLA',name:'Tesla',type:'stock'},
+    {id:'st_AMC',sym:'AMC',name:'AMC',type:'stock'},
+    {id:'st_GME',sym:'GME',name:'GameStop',type:'stock'},
+    {id:'st_MULN',sym:'MULN',name:'Mullen',type:'stock'},
+  ];
+  quickSeeds.forEach(function(s){
+    if(s.binSym) state[s.id]=mkAsset(s.id,s.sym,s.name,'crypto',{binSym:s.binSym});
+    else state[s.id]=mkAsset(s.id,s.sym,s.name,'stock');
+  });
 
-  // Load stock prices via Alpaca snapshots in background
-  loadStockSnapshots();
+  // Select BTC immediately
+  selectA('bn_BTCUSDT');
+  renderSB();
 
-  // ── STEP 5: Start refresh loops ────────────────────────────────────────────
-  setInterval(refreshBinancePrices, 30000);
-  setInterval(refreshStockPrices, 15000);
-  setInterval(refreshOTC, 120000);
-  setInterval(renderTape, 10000);
+  // ── Load everything else in background — non-blocking ─────────────────────
+  loadAllDataBackground();
+
+  // Refresh loops
+  setInterval(refreshBinancePrices,60000);
+  setInterval(refreshStockPrices,15000);
+  setInterval(refreshOTC,120000);
+  setInterval(renderTape,8000);
   setInterval(function(){
-    var total = Object.keys(state).length;
-    var withPrice = Object.keys(state).filter(function(id){return state[id].price>0;}).length;
-    setStatus('Live ⚡ · '+withPrice+'/'+total);
-  }, 5000);
+    var w=Object.keys(state).filter(function(id){return state[id].price>0;}).length;
+    var t=Object.keys(state).length;
+    setStatus('Live ⚡ '+w+' assets');
+  },4000);
   startHot();
   setInterval(function(){if(document.getElementById('page-bn').classList.contains('active'))renderBN();},20000);
   setInterval(function(){if(document.getElementById('page-chaos').classList.contains('active'))renderChaos();},20000);
-  setInterval(function(){if(document.getElementById('page-mkt').classList.contains('active'))renderSB();},10000);
+  setInterval(function(){if(document.getElementById('page-mkt').classList.contains('active'))renderSB();},8000);
+}
+
+async function loadAllDataBackground(){
+  // 1. Fast: get BTC/ETH prices immediately via simple endpoint
+  try{
+    var fast=await bFetch(BIN+'/ticker/price?symbols=[%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22,%22BNBUSDT%22,%22XRPUSDT%22,%22DOGEUSDT%22,%22SHIBUSDT%22,%22PEPEUSDT%22,%22BONKUSDT%22,%22ADAUSDT%22]');
+    if(Array.isArray(fast)){
+      fast.forEach(function(t){
+        var id='bn_'+t.symbol;
+        if(state[id])state[id].price=parseFloat(t.price)||0;
+      });
+      renderSB();renderTape();
+    }
+  }catch(e){}
+
+  // 2. Load stock snapshots for major stocks
+  try{
+    var majors=['AAPL','NVDA','TSLA','AMC','GME','MULN','MARA','RIOT','COIN','PLTR'];
+    var snaps=await getAlpacaSnapshots(majors);
+    Object.keys(snaps).forEach(function(sym){
+      var id='st_'+sym;if(!state[id])return;
+      var snap=snaps[sym];
+      var price=snap.latestTrade?snap.latestTrade.p:0;
+      if(!price&&snap.latestQuote)price=(snap.latestQuote.ap+snap.latestQuote.bp)/2;
+      if(price){
+        state[id].price=price;
+        var dp=snap.dailyBar;
+        if(dp){state[id].high=dp.h||0;state[id].low=dp.l||0;state[id].vol=dp.v||0;state[id].change=price-(dp.o||price);state[id].changePct=(dp.o&&dp.o>0)?((price-dp.o)/dp.o)*100:0;}
+      }
+      refreshMC(id);
+    });
+  }catch(e){}
+
+  // 3. Load BTC history first so chart shows immediately
+  try{
+    var btcK=await getBinanceKlines('BTCUSDT','1h',48);
+    if(btcK.length){state['bn_BTCUSDT'].history=btcK;state['bn_BTCUSDT'].htf['1D']=btcK;if(selId==='bn_BTCUSDT')buildDP('bn_BTCUSDT');}
+  }catch(e){}
+
+  // 4. NOW fetch full Binance ticker (heavy call, but UI is already usable)
+  try{
+    setStatus('Fetching all crypto...');
+    var allTickers=await getAllBinanceTickers();
+    var filtered=allTickers.filter(function(t){
+      return t.symbol&&t.symbol.endsWith('USDT')&&parseFloat(t.quoteVolume||0)>50000;
+    }).sort(function(a,b){return parseFloat(b.quoteVolume||0)-parseFloat(a.quoteVolume||0);});
+    
+    filtered.forEach(function(t){
+      var sym=t.symbol;var base=sym.replace('USDT','');var id='bn_'+sym;
+      if(!state[id])state[id]=mkAsset(id,base,base+'/USDT','crypto',{binSym:sym});
+      state[id].binSym=sym;
+      state[id].price=parseFloat(t.lastPrice||0);
+      state[id].change=parseFloat(t.priceChange||0);
+      state[id].changePct=parseFloat(t.priceChangePercent||0);
+      state[id].high=parseFloat(t.highPrice||0);
+      state[id].low=parseFloat(t.lowPrice||0);
+      state[id].vol=parseFloat(t.quoteVolume||0);
+    });
+    
+    setStatus('Live ⚡');
+    renderSB();renderTape();
+    
+    // Connect WebSocket for all crypto
+    var binSyms=filtered.map(function(t){return t.symbol;});
+    connectBinanceWS(binSyms);
+    
+    // Load history for top 50 crypto
+    loadCryptoHistory(filtered.slice(0,50));
+  }catch(e){setStatus('Live ⚡');}
+
+  // 5. Fetch all Alpaca stocks (heavy, run last)
+  try{
+    var allStocks=await getAllAlpacaAssets();
+    allStocks.forEach(function(a){
+      var id='st_'+a.symbol;
+      if(!state[id])state[id]=mkAsset(id,a.symbol,a.name||a.symbol,'stock');
+    });
+    // Load prices for all stocks in batches
+    loadStockSnapshots();
+    connectAlpacaWS();
+  }catch(e){}
 }
 
 async function loadCryptoHistory(tickers){
