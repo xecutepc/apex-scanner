@@ -208,6 +208,7 @@ body>*{position:relative;z-index:1;}
 </style>
 </head>
 <body>
+<div id="debug-bar" style="background:rgba(255,0,0,0.2);padding:4px 16px;font-size:10px;color:#fca5a5;font-family:monospace;flex-shrink:0;display:none;" id="debug-bar"></div>
 <div id="hdr">
   <div id="hdr-logo">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -305,6 +306,26 @@ body>*{position:relative;z-index:1;}
 </div>
 
 <script>
+// Debug logger
+var _origLog = console.log;
+console.log = function(){
+  _origLog.apply(console, arguments);
+  var bar = document.getElementById('debug-bar');
+  if(bar){
+    bar.style.display='block';
+    bar.textContent = Array.from(arguments).join(' ');
+  }
+};
+console.error = function(){
+  _origLog.apply(console, arguments);
+  var bar = document.getElementById('debug-bar');
+  if(bar){
+    bar.style.display='block';
+    bar.style.background='rgba(255,0,0,0.4)';
+    bar.textContent = 'ERROR: '+Array.from(arguments).join(' ');
+  }
+};
+
 // ── KEYS ─────────────────────────────────────────────────────────────────────
 var _a=['PKH4QHFK','HZX5NOHH','HS66SAJDIQ'];
 var _b=['2udrfy4j','K1boUKav','sJcpXS793tWt6ac','uZ5Kw7wCwxAzM'];
@@ -597,9 +618,12 @@ function init(){
 }
 
 async function loadAllDataBackground(){
+  console.log('Starting background load...');
   // 1. Fast: get BTC/ETH prices immediately via simple endpoint
   try{
+    console.log('Fetching fast prices...');
     var fast=await bFetch(BIN+'/ticker/price?symbols=[%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22,%22BNBUSDT%22,%22XRPUSDT%22,%22DOGEUSDT%22,%22SHIBUSDT%22,%22PEPEUSDT%22,%22BONKUSDT%22,%22ADAUSDT%22]');
+    console.log('Fast prices response:', fast);
     if(Array.isArray(fast)){
       fast.forEach(function(t){
         var id='bn_'+t.symbol;
@@ -636,7 +660,9 @@ async function loadAllDataBackground(){
   // 4. NOW fetch full Binance ticker (heavy call, but UI is already usable)
   try{
     setStatus('Fetching all crypto...');
+    console.log('Starting big Binance fetch...');
     var allTickers=await getAllBinanceTickers();
+    console.log('Binance returned:', allTickers.length, 'tickers');
     var filtered=allTickers.filter(function(t){
       return t.symbol&&t.symbol.endsWith('USDT')&&parseFloat(t.quoteVolume||0)>50000;
     }).sort(function(a,b){return parseFloat(b.quoteVolume||0)-parseFloat(a.quoteVolume||0);});
@@ -666,7 +692,9 @@ async function loadAllDataBackground(){
 
   // 5. Fetch all Alpaca stocks (heavy, run last)
   try{
+    console.log('Fetching Alpaca assets...');
     var allStocks=await getAllAlpacaAssets();
+    console.log('Alpaca returned:', allStocks.length, 'assets');
     allStocks.forEach(function(a){
       var id='st_'+a.symbol;
       if(!state[id])state[id]=mkAsset(id,a.symbol,a.name||a.symbol,'stock');
