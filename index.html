@@ -336,10 +336,63 @@ async function init(){
   }catch(e){}
   document.getElementById('stxt').textContent='Live';
   loadBg(allC,allS);
-  setInterval(refreshCG,60000);setInterval(refreshStocks,45000);setInterval(refreshOTC,60000);
+  // Binance WebSocket for real-time crypto ticks
+  connectBinance([...new Set([...CIDS,...PIDS])]);
+  // Faster stock refresh
+  setInterval(refreshCG,45000);
+  setInterval(refreshStocks,20000);
+  setInterval(refreshOTC,45000);
   startHot();
-  setInterval(function(){if(document.getElementById('page-bn').classList.contains('active'))renderBN();},30000);
+  setInterval(function(){if(document.getElementById('page-bn').classList.contains('active'))renderBN();},20000);
   setInterval(function(){if(document.getElementById('page-chaos').classList.contains('active'))renderChaos();},20000);
+  setInterval(function(){if(document.getElementById('page-hot').classList.contains('active'))renderHot();},15000);
+}
+
+function connectBinance(cgIds){
+  // Map CoinGecko IDs to Binance symbols
+  var cgToBinance={
+    'bitcoin':'btcusdt','ethereum':'ethusdt','solana':'solusdt','ripple':'xrpusdt',
+    'dogecoin':'dogeusdt','shiba-inu':'shibusdt','pepe':'pepeusdt','bonk':'bonkusdt',
+    'floki':'flokiusdt','baby-doge-coin':'babydobeusdt','wojak':'wojusdt',
+    'kishu-inu':'kishuusdt','hoge-finance':'hogeusdt'
+  };
+  var streams=[];
+  cgIds.forEach(function(id){if(cgToBinance[id])streams.push(cgToBinance[id]+'@ticker');});
+  if(!streams.length)return;
+  var wsUrl='wss://stream.binance.com:9443/stream?streams='+streams.join('/');
+  var ws=new WebSocket(wsUrl);
+  ws.onopen=function(){document.getElementById('stxt').textContent='Live ⚡';};
+  ws.onmessage=function(e){
+    try{
+      var msg=JSON.parse(e.data);
+      var d=msg.data;if(!d)return;
+      // Find CoinGecko id from Binance symbol
+      var bsym=d.s.toLowerCase();
+      var cgId=null;
+      Object.keys(cgToBinance).forEach(function(k){if(cgToBinance[k]===bsym)cgId=k;});
+      if(!cgId||!state[cgId])return;
+      var s=state[cgId];
+      var price=parseFloat(d.c);
+      var open=parseFloat(d.o);
+      if(!price||price===s.price)return;
+      s.price=price;
+      s.change=price-open;
+      s.changePct=open?((price-open)/open)*100:0;
+      s.high=parseFloat(d.h)||s.high;
+      s.low=parseFloat(d.l)||s.low;
+      s.vol=parseFloat(d.v)||s.vol;
+      if(!s.history)s.history=[];
+      s.history.push({t:Date.now(),price:price});
+      if(s.history.length>300)s.history.shift();
+      refreshMC(cgId);
+      if(selId===cgId)refreshNums(cgId);
+    }catch(err){}
+  };
+  ws.onerror=function(){document.getElementById('stxt').textContent='Live';};
+  ws.onclose=function(){
+    // Reconnect after 5s
+    setTimeout(function(){connectBinance(cgIds);},5000);
+  };
 }
 
 async function loadBg(allC,allS){
@@ -352,7 +405,34 @@ async function loadBg(allC,allS){
 }
 
 async function refreshCG(){var all=[...new Set([...CIDS,...PIDS])];var d=await fetchCG(all);d.forEach(function(c){if(!state[c.id])return;state[c.id].price=c.current_price||0;state[c.id].change=c.price_change_24h||0;state[c.id].changePct=c.price_change_percentage_24h||0;state[c.id].high=c.high_24h||0;state[c.id].low=c.low_24h||0;if(state[c.id].history){state[c.id].history.push({t:Date.now(),price:c.current_price||0});if(state[c.id].history.length>200)state[c.id].history.shift();}refreshMC(c.id);if(selId===c.id)refreshNums(c.id);});}
-async function refreshStocks(){for(var i=0;i<STOCKS.length;i++){try{var bars=await stockBars(STOCKS[i],'1D',2);if(!bars.length)continue;var price=bars[bars.length-1].price;if(!price||price===state[STOCKS[i]].price)continue;state[STOCKS[i]].price=price;if(state[STOCKS[i]].history){state[STOCKS[i]].history.push({t:Date.now(),price:price});if(state[STOCKS[i]].history.length>200)state[STOCKS[i]].history.shift();}var op=state[STOCKS[i]].history[0]?state[STOCKS[i]].history[0].price:price;state[STOCKS[i]].change=price-op;state[STOCKS[i]].changePct=op?(state[STOCKS[i]].change/op)*100:0;refreshMC(STOCKS[i]);if(selId===STOCKS[i])refreshNums(STOCKS[i]);}catch(e){}await sleep(100);}}
+async function refreshStocks(){
+  var allS=[...STOCKS,...LOW];
+  try{
+    var syms=allS.join(',');
+    var d=await aFetch(AB+'/stocks/quotes/latest?symbols='+syms+'&feed=iex');
+    var quotes=d.quotes||{};
+    Object.keys(quotes).forEach(function(sym){
+      if(!state[sym])return;
+      var q=quotes[sym];
+      var price=q.ap||q.bp||0;
+      if(!price||price===state[sym].price)return;
+      state[sym].price=price;
+      if(!state[sym].history)state[sym].history=[];
+      state[sym].history.push({t:Date.now(),price:price});
+      if(state[sym].history.length>300)state[sym].history.shift();
+      var op=state[sym].history[0]?state[sym].history[0].price:price;
+      state[sym].change=price-op;
+      state[sym].changePct=op?(state[sym].change/op)*100:0;
+      refreshMC(sym);
+      if(selId===sym)refreshNums(sym);
+    });
+  }catch(e){
+    // fallback to bar polling
+    for(var i=0;i<STOCKS.length;i++){
+      try{var bars=await stockBars(STOCKS[i],'1D',2);if(!bars.length)continue;var price=bars[bars.length-1].price;if(!price||price===state[STOCKS[i]].price)continue;state[STOCKS[i]].price=price;if(state[STOCKS[i]].history){state[STOCKS[i]].history.push({t:Date.now(),price:price});if(state[STOCKS[i]].history.length>200)state[STOCKS[i]].history.shift();}var op=state[STOCKS[i]].history[0]?state[STOCKS[i]].history[0].price:price;state[STOCKS[i]].change=price-op;state[STOCKS[i]].changePct=op?(state[STOCKS[i]].change/op)*100:0;refreshMC(STOCKS[i]);if(selId===STOCKS[i])refreshNums(STOCKS[i]);}catch(e2){}await sleep(100);
+    }
+  }
+}
 async function refreshOTC(){for(var i=0;i<OTC.length;i++){try{var p=await otcPrice(OTC[i]);if(!p||p===state[OTC[i]].price)continue;state[OTC[i]].price=p;if(state[OTC[i]].history){state[OTC[i]].history.push({t:Date.now(),price:p});if(state[OTC[i]].history.length>200)state[OTC[i]].history.shift();}var op=state[OTC[i]].history[0]?state[OTC[i]].history[0].price:p;state[OTC[i]].change=p-op;state[OTC[i]].changePct=op?(state[OTC[i]].change/op)*100:0;refreshMC(OTC[i]);if(selId===OTC[i])refreshNums(OTC[i]);}catch(e){}await sleep(150);}}
 
 function renderSB(){
@@ -372,26 +452,26 @@ function buildDP(id){
   var s=state[id];if(!s)return;var up=s.changePct>=0;var sym=s.symbol||id;
   var href=s.type==='crypto'?'https://coinbase.com/price/'+id:'https://robinhood.com/stocks/'+id;
   var bl=s.type==='crypto'?'Buy on Coinbase ↗':'Buy on Robinhood ↗';
-  document.getElementById('dmain').innerHTML='<div id="dpanel">'
+  var dm=document.getElementById('dmain');
+  dm.innerHTML='<div id="dpanel">'
     +'<div id="dp-hdr"><div><div id="dp-sym">'+sym+'</div><div id="dp-sub">'+s.name+' · '+(s.otc?'OTC · ':'')+(s.type==='crypto'?'Crypto':'Stock')+' · 24h</div></div>'
     +'<div style="text-align:right"><div id="dp-price" class="'+(up?'up':'down')+'">'+fp(s.price)+'</div><div id="dp-chg" class="'+(up?'up':'down')+'">'+(up?'+':'')+s.changePct.toFixed(2)+'% today</div><a class="buybig" href="'+href+'" target="_blank">'+bl+'</a></div></div>'
     +'<div id="tf-bar">'
-    +'<button class="tf-btn" id="tf10M">10m</button>'
-    +'<button class="tf-btn" id="tf1H">1h</button>'
-    +'<button class="tf-btn active" id="tf1D">1d</button>'
-    +'<button class="tf-btn" id="tf1W">1w</button>'
-    +'<button class="tf-btn" id="tf1M">1m</button>'
+    +'<button class="tf-btn" data-tf="10M">10m</button>'
+    +'<button class="tf-btn" data-tf="1H">1h</button>'
+    +'<button class="tf-btn active" data-tf="1D">1d</button>'
+    +'<button class="tf-btn" data-tf="1W">1w</button>'
+    +'<button class="tf-btn" data-tf="1M">1m</button>'
     +'</div>'
     +'<div id="dp-cw"><canvas id="dp-cv" role="img" aria-label="'+sym+' chart"></canvas></div>'
-    +'<div id="dp-stats"><div class="stat"><div class="sl">High 24h</div><div class="sv up" id="dph">'+fp(s.high||s.price)+'</div></div><div class="stat"><div class="sl">Low 24h</div><div class="sv down" id="dpl">'+fp(s.low||s.price)+'</div></div><div class="stat"><div class="sl">Change</div><div class="sv '+(up?'up':'down')+'" id="dpc">'+(s.change>=0?'+':'')+fp(Math.abs(s.change))+'</div></div><div class="stat"><div class="sl">Data pts</div><div class="sv" id="dpd">'+s.history.length+'</div></div></div>'
-    +'<div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="info-btn" id="dp-info-btn">📊 Outlook & Analysis</button></div>'
+    +'<div id="dp-stats"><div class="stat"><div class="sl">High 24h</div><div class="sv up" id="dph">'+fp(s.high||s.price)+'</div></div><div class="stat"><div class="sl">Low 24h</div><div class="sv down" id="dpl">'+fp(s.low||s.price)+'</div></div><div class="stat"><div class="sl">Change</div><div class="sv '+(up?'up':'down')+'" id="dpc">'+(s.change>=0?'+':'')+fp(Math.abs(s.change))+'</div></div><div class="stat"><div class="sl">Data pts</div><div class="sv" id="dpd">'+(s.history?s.history.length:0)+'</div></div></div>'
+    +'<div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="info-btn" data-info-id="'+id+'">📊 Outlook & Analysis</button></div>'
     +'</div>';
-  // Attach tf button events
-  ['10M','1H','1D','1W','1M'].forEach(function(tf){
-    var btn=document.getElementById('tf'+tf);
-    if(btn)btn.onclick=function(){setTf(tf,btn);};
+  // Attach tf button events after DOM is set
+  dm.querySelectorAll('[data-tf]').forEach(function(btn){
+    btn.addEventListener('click',function(){setTf(btn.getAttribute('data-tf'),btn);});
   });
-  document.getElementById('dp-info-btn').onclick=function(){openInfo(id);};
+  dm.querySelector('[data-info-id]').addEventListener('click',function(){openInfo(id);});
   buildDC(id,'1D');
 }
 
