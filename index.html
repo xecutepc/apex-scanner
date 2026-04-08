@@ -292,7 +292,7 @@ body>*{position:relative;z-index:1;}
 <script>
 // ── Replace PROXY_URL with your Vercel deployment URL ──────────────────────
 // e.g. https://apex-proxy.vercel.app
-var PROXY_URL='https://apex-proxy-git-main-xecutepcs-projects.vercel.app';
+var PROXY_URL='REPLACE_WITH_YOUR_VERCEL_URL';
 var AB=PROXY_URL+'/api/alpaca';
 var PB_API=PROXY_URL+'/api/polygon';
 var STOCKS=['AAPL','NVDA','TSLA','SPY','AMZN'];
@@ -321,9 +321,9 @@ function aFetch(url){return ftch(url,{},7000).then(function(r){return r.json();}
 
 async function fetchCG(ids){try{var r=await ftch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids='+ids.join(',')+'&order=market_cap_desc&sparkline=false&price_change_percentage=24h',{},8000);return await r.json();}catch(e){return[];}}
 async function fetchCGH(id,days,interval){try{var url='https://api.coingecko.com/api/v3/coins/'+id+'/market_chart?vs_currency=usd&days='+days+(interval?'&interval='+interval:'');var r=await ftch(url,{},8000);var d=await r.json();return(d.prices||[]).map(function(p){return{t:p[0],price:p[1]};});}catch(e){return[];}}
-async function stockBars(sym,tf,lim){var tfm={'10M':'1Min','1H':'5Min','1D':'1Hour','1W':'1Day','1M':'1Day'};var lm={'10M':10,'1H':12,'1D':24,'1W':7,'1M':30};var t=tfm[tf]||'1Hour';var l=lim||(lm[tf]||24);var d=await aFetch(AB+'?path=stocks/'+sym+'/bars&timeframe='+t+'&limit='+l+'&feed=iex');return(d.bars||[]).map(function(b){return{t:new Date(b.t).getTime(),price:b.c};});}
-async function otcBars(sym){try{var to=new Date();var from=new Date(to.getTime()-7*864e5);var r=await ftch(PB_API+'?path=v2/aggs/ticker/'+sym+'/range/1/hour/'+from.toISOString().slice(0,10)+'/'+to.toISOString().slice(0,10)+'&adjusted=true&sort=asc&limit=60',{},7000);var d=await r.json();return(d.results||[]).map(function(b){return{t:b.t,price:b.c};});}catch(e){return[];}}
-async function otcPrice(sym){try{var r=await ftch(PB_API+'?path=v2/last/trade/'+sym,{},5000);var d=await r.json();return d.results?d.results.p:null;}catch(e){return null;}}
+async function stockBars(sym,tf,lim){var tfm={'10M':'1Min','1H':'5Min','1D':'1Hour','1W':'1Day','1M':'1Day'};var lm={'10M':10,'1H':12,'1D':24,'1W':7,'1M':30};var t=tfm[tf]||'1Hour';var l=lim||(lm[tf]||24);var d=await aFetch(AB+'?path='+encodeURIComponent('stocks/'+sym+'/bars')+'&timeframe='+t+'&limit='+l+'&feed=iex');return(d.bars||[]).map(function(b){return{t:new Date(b.t).getTime(),price:b.c};});}
+async function otcBars(sym){try{var to=new Date();var from=new Date(to.getTime()-7*864e5);var otcPath=encodeURIComponent('v2/aggs/ticker/'+sym+'/range/1/hour/'+from.toISOString().slice(0,10)+'/'+to.toISOString().slice(0,10));var r=await ftch(PB_API+'?path='+otcPath+'&adjusted=true&sort=asc&limit=60',{},7000);var d=await r.json();return(d.results||[]).map(function(b){return{t:b.t,price:b.c};});}catch(e){return[];}}
+async function otcPrice(sym){try{var r=await ftch(PB_API+'?path='+encodeURIComponent('v2/last/trade/'+sym),{},5000);var d=await r.json();return d.results?d.results.p:null;}catch(e){return null;}}
 
 async function init(){
   var allC=[...new Set([...CIDS,...PIDS])];
@@ -412,7 +412,7 @@ async function refreshStocks(){
   var allS=[...STOCKS,...LOW];
   try{
     var syms=allS.join(',');
-    var d=await aFetch(AB+'?path=stocks/quotes/latest&symbols='+syms+'&feed=iex');
+    var d=await aFetch(AB+'?path='+encodeURIComponent('stocks/quotes/latest')+'&symbols='+encodeURIComponent(syms)+'&feed=iex');
     var quotes=d.quotes||{};
     Object.keys(quotes).forEach(function(sym){
       if(!state[sym])return;
