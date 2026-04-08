@@ -365,13 +365,32 @@ function bFetch(url){
 }
 
 // ── BINANCE DATA ──────────────────────────────────────────────────────────────
-async function getBinanceTickers(){
+// Fully dynamic - no hardcoded lists
+async function getAllBinanceTickers(){
+  // Fetch full 24hr ticker for all symbols - has priceChangePercent
   try{
     var d=await bFetch(BIN+'/ticker/24hr');
+    if(!Array.isArray(d)||!d.length)throw new Error('empty');
+    return d;
+  }catch(e){
+    // Fallback to mini ticker
+    try{
+      var d2=await bFetch(BIN+'/ticker/24hr?type=MINI');
+      if(!Array.isArray(d2))return[];
+      return d2;
+    }catch(e2){return[];}
+  }
+}
+
+async function getAllAlpacaAssets(){
+  try{
+    // Get all active tradeable US equity assets
+    var d=await aFetch(AB+'/assets?status=active&asset_class=us_equity&exchange=NYSE,NASDAQ,OTC');
     if(!Array.isArray(d))return[];
-    // Filter USDT pairs only, sort by quote volume descending
-    return d.filter(function(t){return t.symbol.endsWith('USDT')&&parseFloat(t.quoteVolume)>50000;})
-      .sort(function(a,b){return parseFloat(b.quoteVolume)-parseFloat(a.quoteVolume)});
+    // Filter to tradeable, reasonable symbol length
+    return d.filter(function(a){
+      return a.tradable && a.symbol && a.symbol.length<=5 && !/[.$]/.test(a.symbol);
+    });
   }catch(e){return[];}
 }
 
@@ -395,13 +414,26 @@ function tfToLimit(tf){
 }
 
 // ── ALPACA DATA ───────────────────────────────────────────────────────────────
+// Curated stock list - major + penny + known movers
+var STOCK_LIST = [
+  // Major
+  'AAPL','NVDA','TSLA','SPY','AMZN','META','MSFT','AMD','GOOG','COIN','MSTR','PLTR',
+  'BABA','NIO','RIVN','LCID','F','GM','SOFI','HOOD','RBLX','SNAP','UBER','LYFT',
+  // Penny/Low price (under $5)
+  'MULN','FFIE','IDEX','NKLA','SNDL','CLOV','WKHS','SPCE','MVIS','VERB',
+  'BBIG','ATER','WISH','EXPR','AMC','GME','BBBY','TLRY','NAKD','CTRM',
+  'SHIP','HMBL','MMAT','PROG','SENS','ENRT','BFRI','KPLT','HIMS','OPEN',
+  'PSFE','UWMC','CLOV','NKLA','RIDE','GOEV','PTRA','HYLN','ACTC','XL',
+  'DKNG','PENN','CHPT','BLNK','PLUG','FCEL','BE','BLDE','JOBY','ACHR',
+  'EVGO','PTRA','FSR','WKHS','SOLO','AYRO','ARVL','ZEV','HYRE','KNTK',
+  'PRPB','STPK','CIIG','CCIV','IPOE','IPOF','AJAX','AJAX','AACQ','TPGY',
+  'BTBT','MARA','RIOT','HUT','BITF','CIFR','CLSK','DGHI','EBON','BTCM',
+  'SFOR','XELA','MFON','TRCH','TANH','SGBX','ILUS','DPLS','EPAZ','ABML'
+];
+
 async function getAlpacaAssets(){
-  try{
-    // Get all active US equity assets
-    var d=await aFetch(AB+'/assets?status=active&asset_class=us_equity');
-    if(!Array.isArray(d))return[];
-    return d.filter(function(a){return a.tradable&&a.fractionable!==false;});
-  }catch(e){return[];}
+  // Return our curated list - no need to fetch all 10000 assets
+  return STOCK_LIST.map(function(sym){return{symbol:sym,name:sym,tradable:true};});
 }
 
 async function getAlpacaSnapshots(symbols){
@@ -450,8 +482,8 @@ function connectBinanceWS(symbols){
       var msg=JSON.parse(e.data);var d=msg.data;if(!d||!d.s)return;
       var id='bn_'+d.s;
       if(!state[id])return;
-      var price=parseFloat(d.c);
-      var open=parseFloat(d.o);
+      var price=parseFloat(d.c||d.lastPrice||0);
+      var open=parseFloat(d.o||d.openPrice||0);
       if(!price)return;
       state[id].price=price;
       state[id].change=price-open;
@@ -516,97 +548,89 @@ async function init(){
   setStatus('Loading...');
   renderSB();
 
-  // Step 1: Get all Binance USDT pairs (top 300 by volume)
-  setStatus('Fetching crypto list...');
-  var binTickers=await getBinanceTickers();
-  var top300=binTickers.slice(0,300);
+  // ── STEP 1: Fetch ALL Binance tickers ──────────────────────────────────────
+  setStatus('Fetching crypto...');
+  var allTickers = await getAllBinanceTickers();
+  
+  // Filter: USDT pairs only, with real volume
+  var cryptoTickers = allTickers.filter(function(t){
+    return t.symbol && t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume||t.q||0) > 10000;
+  }).sort(function(a,b){
+    return parseFloat(b.quoteVolume||b.q||0) - parseFloat(a.quoteVolume||a.q||0);
+  }).slice(0, 500); // top 500 by volume
 
-  // Create state for all Binance assets
-  top300.forEach(function(t){
-    var sym=t.symbol; // e.g. BTCUSDT
-    var base=sym.replace('USDT','');
-    var id='bn_'+sym;
-    state[id]=mkAsset(id,base,base+'/USDT','crypto',{
-      binSym:sym,
-      price:parseFloat(t.lastPrice)||0,
-      change:parseFloat(t.priceChange)||0,
-      changePct:parseFloat(t.priceChangePercent)||0,
-      high:parseFloat(t.highPrice)||0,
-      low:parseFloat(t.lowPrice)||0,
-      vol:parseFloat(t.quoteVolume)||0
+  // Create state for all crypto
+  cryptoTickers.forEach(function(t){
+    var sym = t.symbol;
+    var base = sym.replace('USDT','');
+    var id = 'bn_'+sym;
+    state[id] = mkAsset(id, base, base+'/USDT', 'crypto', {
+      binSym: sym,
+      price:     parseFloat(t.lastPrice||t.c||0),
+      change:    parseFloat(t.priceChange||0),
+      changePct: parseFloat(t.priceChangePercent||0),
+      high:      parseFloat(t.highPrice||t.h||0),
+      low:       parseFloat(t.lowPrice||t.l||0),
+      vol:       parseFloat(t.quoteVolume||t.q||0)
     });
   });
 
-  setStatus('Fetching stock list...');
-
-  // Step 2: Get Alpaca assets and filter penny stocks
-  var alpacaAll=await getAlpacaAssets();
-  // Filter: price will be fetched, but add all tradable for now
-  // We'll prioritize: known penny stocks + high volume
-  var knownPenny=['MULN','FFIE','IDEX','NKLA','SNDL','CLOV','WKHS','SPCE','MVIS','VERB','BBIG','ATER','WISH','CLOV','EXPR','AMC','GME','BBBY','TLRY','NAKD'];
-  var majorStocks=['AAPL','NVDA','TSLA','SPY','AMZN','META','MSFT','AMD','GOOG','COIN','MSTR','PLTR'];
-
-  // Add major stocks
-  majorStocks.forEach(function(sym){
-    var id='st_'+sym;
-    state[id]=mkAsset(id,sym,sym,'stock',{major:true});
-  });
-
-  // Add penny/low price stocks
-  knownPenny.forEach(function(sym){
-    var id='st_'+sym;
-    if(!state[id])state[id]=mkAsset(id,sym,sym,'stock',{penny:true});
-  });
-
-  // Add more from Alpaca list (first 200 that aren't already added)
-  var added=0;
-  for(var i=0;i<alpacaAll.length&&added<150;i++){
-    var a=alpacaAll[i];
-    var id='st_'+a.symbol;
-    if(!state[id]&&a.symbol.length<=5){
-      state[id]=mkAsset(id,a.symbol,a.name||a.symbol,'stock');
-      added++;
-    }
-  }
-
-  // OTC stocks via Polygon
-  var otcSyms=['SIGY','ILUS','DPLS','EPAZ','BFCF','HMBL','GFAI','ABML','GTSO','LIQT','PNPLD','ILUS','TPVG'];
-  otcSyms.forEach(function(sym){
-    var id='st_'+sym;
-    if(!state[id])state[id]=mkAsset(id,sym,sym,'stock',{otc:true});
-  });
-
-  setStatus('Loading prices...');
+  var cryptoCount = cryptoTickers.length;
+  setStatus('Got '+cryptoCount+' crypto...');
   renderSB();
   renderTape();
 
-  // Step 3: Load initial crypto history in background
-  loadCryptoHistory(top300.slice(0,50)); // top 50 get history first
+  // ── STEP 2: Fetch ALL Alpaca stock assets ──────────────────────────────────
+  setStatus('Fetching stocks...');
+  var allStocks = await getAllAlpacaAssets();
+  
+  allStocks.forEach(function(a){
+    var id = 'st_'+a.symbol;
+    if(!state[id]) state[id] = mkAsset(id, a.symbol, a.name||a.symbol, 'stock');
+  });
 
-  // Step 4: Load stock snapshots (prices for all stocks at once)
-  loadStockSnapshots();
+  // OTC stocks via Polygon (small list, fetched separately)
+  ['SIGY','DPLS','EPAZ','BFCF','GTSO','LIQT','TPVG','ABML','GFAI','HMBL'].forEach(function(sym){
+    var id='st_'+sym;
+    if(!state[id]) state[id] = mkAsset(id,sym,sym,'stock',{otc:true});
+  });
 
-  // Step 5: Connect WebSockets for live updates
-  var binSyms=top300.map(function(t){return t.symbol;});
+  var stockCount = allStocks.length;
+  setStatus('Got '+stockCount+' stocks...');
+  renderSB();
+
+  // ── STEP 3: Connect WebSockets immediately ─────────────────────────────────
+  var binSyms = cryptoTickers.map(function(t){return t.symbol;});
   connectBinanceWS(binSyms);
   connectAlpacaWS();
 
+  // Select BTC right away
+  var firstId = 'bn_BTCUSDT';
+  if(state[firstId]) selectA(firstId);
+
   setStatus('Live ⚡');
-  renderSB();
-  renderTape();
 
-  // Select first major crypto
-  var firstId='bn_BTCUSDT';
-  if(state[firstId])selectA(firstId);
+  // ── STEP 4: Load prices + history in background ────────────────────────────
+  // Load crypto history for top 100 (Binance klines, fast)
+  loadCryptoHistory(cryptoTickers.slice(0,100));
 
-  // Refresh loops
-  setInterval(refreshBinancePrices,30000);  // backup price refresh
-  setInterval(refreshStockPrices,15000);    // stock price refresh
-  setInterval(refreshOTC,120000);           // OTC refresh every 2 min
+  // Load stock prices via Alpaca snapshots in background
+  loadStockSnapshots();
+
+  // ── STEP 5: Start refresh loops ────────────────────────────────────────────
+  setInterval(refreshBinancePrices, 30000);
+  setInterval(refreshStockPrices, 15000);
+  setInterval(refreshOTC, 120000);
+  setInterval(renderTape, 10000);
+  setInterval(function(){
+    var total = Object.keys(state).length;
+    var withPrice = Object.keys(state).filter(function(id){return state[id].price>0;}).length;
+    setStatus('Live ⚡ · '+withPrice+'/'+total);
+  }, 5000);
   startHot();
   setInterval(function(){if(document.getElementById('page-bn').classList.contains('active'))renderBN();},20000);
   setInterval(function(){if(document.getElementById('page-chaos').classList.contains('active'))renderChaos();},20000);
-  setInterval(renderTape,10000);
+  setInterval(function(){if(document.getElementById('page-mkt').classList.contains('active'))renderSB();},10000);
 }
 
 async function loadCryptoHistory(tickers){
@@ -683,18 +707,19 @@ async function loadStockSnapshots(){
 }
 
 async function refreshBinancePrices(){
+  // WebSocket handles real-time - this is just a backup
   try{
-    var tickers=await getBinanceTickers();
-    tickers.slice(0,300).forEach(function(t){
+    var tickers=await getAllBinanceTickers();
+    tickers.filter(function(t){return t.symbol&&t.symbol.endsWith('USDT');}).forEach(function(t){
       var id='bn_'+t.symbol;
       if(!state[id])return;
-      var price=parseFloat(t.lastPrice);
-      if(!price||price===state[id].price)return;
+      var price=parseFloat(t.lastPrice||t.c||0);
+      if(!price)return;
       state[id].price=price;
-      state[id].change=parseFloat(t.priceChange)||0;
-      state[id].changePct=parseFloat(t.priceChangePercent)||0;
-      state[id].high=parseFloat(t.highPrice)||state[id].high;
-      state[id].low=parseFloat(t.lowPrice)||state[id].low;
+      state[id].change=parseFloat(t.priceChange||0);
+      state[id].changePct=parseFloat(t.priceChangePercent||0);
+      state[id].high=parseFloat(t.highPrice||t.h||0)||state[id].high;
+      state[id].low=parseFloat(t.lowPrice||t.l||0)||state[id].low;
       refreshMC(id);
       if(selId===id)refreshDetailNums(id);
     });
