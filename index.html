@@ -451,20 +451,34 @@ function initS(id,type,name){
 }
 
 // CoinGecko
+async function fetchWithTimeout(url,opts,ms){
+  ms=ms||8000;
+  var controller=new AbortController();
+  var tid=setTimeout(function(){controller.abort();},ms);
+  try{
+    var r=await fetch(url,Object.assign({signal:controller.signal},opts||{}));
+    clearTimeout(tid);return r;
+  }catch(e){clearTimeout(tid);throw e;}
+}
 async function fetchCG(ids){
-  try{var r=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids='+ids.join(',')+'&order=market_cap_desc&sparkline=false&price_change_percentage=24h');return await r.json();}
-  catch(e){return[];}
+  try{
+    var r=await fetchWithTimeout('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids='+ids.join(',')+'&order=market_cap_desc&sparkline=false&price_change_percentage=24h',{},8000);
+    return await r.json();
+  }catch(e){return[];}
 }
 async function fetchCGHist(id,days,interval){
   try{
     var url='https://api.coingecko.com/api/v3/coins/'+id+'/market_chart?vs_currency=usd&days='+days+(interval?'&interval='+interval:'');
-    var r=await fetch(url);var d=await r.json();
+    var r=await fetchWithTimeout(url,{},8000);var d=await r.json();
     return(d.prices||[]).map(function(p){return{t:p[0],price:p[1]};});
   }catch(e){return[];}
 }
 
 // Alpaca
-function aFetch(url){return fetch(url,{headers:{'APCA-API-KEY-ID':AK,'APCA-API-SECRET-KEY':AS}}).then(function(r){return r.json();}).catch(function(){return{};});}
+function aFetch(url){
+  return fetchWithTimeout(url,{headers:{'APCA-API-KEY-ID':AK,'APCA-API-SECRET-KEY':AS}},7000)
+    .then(function(r){return r.json();}).catch(function(){return{};});
+}
 async function stockBars(sym,tf,lim){
   var tfmap={'10M':'1Min','1H':'5Min','1D':'1Hour','1W':'1Day','1M':'1Day'};
   var limmap={'10M':10,'1H':12,'1D':24,'1W':7,'1M':30};
@@ -475,64 +489,140 @@ async function stockBars(sym,tf,lim){
 async function fetchOTCBars(sym){
   try{
     var to=new Date();var from=new Date(to.getTime()-7*24*3600000);
-    var r=await fetch(PB+'/v2/aggs/ticker/'+sym+'/range/1/hour/'+from.toISOString().slice(0,10)+'/'+to.toISOString().slice(0,10)+'?adjusted=true&sort=asc&limit=60&apiKey='+PK);
+    var r=await fetchWithTimeout(PB+'/v2/aggs/ticker/'+sym+'/range/1/hour/'+from.toISOString().slice(0,10)+'/'+to.toISOString().slice(0,10)+'?adjusted=true&sort=asc&limit=60&apiKey='+PK,{},7000);
     var d=await r.json();return(d.results||[]).map(function(b){return{t:b.t,price:b.c};});
   }catch(e){return[];}
 }
 async function fetchOTCPrice(sym){
-  try{var r=await fetch(PB+'/v2/last/trade/'+sym+'?apiKey='+PK);var d=await r.json();return d.results?d.results.p:null;}
-  catch(e){return null;}
+  try{
+    var r=await fetchWithTimeout(PB+'/v2/last/trade/'+sym+'?apiKey='+PK,{},5000);
+    var d=await r.json();return d.results?d.results.p:null;
+  }catch(e){return null;}
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 async function init(){
-  document.getElementById('stxt').textContent='Loading';
+  // Init all state immediately so UI is never blocked
   var allC=[...new Set([...CRYPTO_IDS,...PENNY_IDS])];
   var allS=[...new Set([...STOCKS,...LOW_STOCKS])];
   allC.forEach(function(id){initS(id,'crypto',id);});
   allS.forEach(function(id){initS(id,'stock',id);});
   OTC_STOCKS.forEach(function(id){initS(id,'stock',id);state[id].otc=true;});
 
-  var cgData=await fetchCG(allC);
-  cgData.forEach(function(c){
-    if(!state[c.id])return;
-    state[c.id].price=c.current_price||0;state[c.id].name=c.name;
-    state[c.id].symbol=(c.symbol||'').toUpperCase();
-    state[c.id].change=c.price_change_24h||0;state[c.id].changePct=c.price_change_percentage_24h||0;
-    state[c.id].high=c.high_24h||0;state[c.id].low=c.low_24h||0;state[c.id].vol=c.total_volume||0;
-  });
+  // Render sidebar immediately with empty data so buttons work right away
+  renderSidebar();
+  renderTape();
 
-  // Load 1D history for crypto (default view)
-  for(var i=0;i<allC.length;i++){
-    var h=await fetchCGHist(allC[i],1,'hourly');
-    if(h.length){state[allC[i]].history=h;state[allC[i]].historyByTf={'1D':h};}
-    await sleep(350);
-  }
-  // Load stocks 1D
-  for(var j=0;j<allS.length;j++){
-    var bars=await stockBars(allS[j],'1D',24);
-    if(bars.length){
-      state[allS[j]].history=bars;state[allS[j]].historyByTf={'1D':bars};
-      state[allS[j]].price=bars[bars.length-1].price;
-      var o=bars[0].price;state[allS[j]].change=state[allS[j]].price-o;state[allS[j]].changePct=o?(state[allS[j]].change/o)*100:0;
-    }
-    await sleep(130);
-  }
-  for(var k=0;k<OTC_STOCKS.length;k++){
-    var ob=await fetchOTCBars(OTC_STOCKS[k]);
-    if(ob.length){
-      state[OTC_STOCKS[k]].history=ob;state[OTC_STOCKS[k]].historyByTf={'1D':ob};
-      state[OTC_STOCKS[k]].price=ob[ob.length-1].price;
-      var oo=ob[0].price;state[OTC_STOCKS[k]].change=state[OTC_STOCKS[k]].price-oo;state[OTC_STOCKS[k]].changePct=oo?(state[OTC_STOCKS[k]].change/oo)*100:0;
-    }else{var op=await fetchOTCPrice(OTC_STOCKS[k]);if(op)state[OTC_STOCKS[k]].price=op;}
-    await sleep(180);
-  }
+  // Show placeholder detail
+  document.getElementById('dmain').innerHTML='<div id="dp-ph" style="display:flex;align-items:center;justify-content:center;height:160px;color:var(--text3);font-size:13px;">Loading prices...</div>';
 
-  renderSidebar();renderTape();selectAsset(STOCKS[0]);
+  // Load crypto prices first (fastest, no auth needed)
+  try {
+    var cgData=await fetchCG(allC);
+    cgData.forEach(function(c){
+      if(!state[c.id])return;
+      state[c.id].price=c.current_price||0;state[c.id].name=c.name;
+      state[c.id].symbol=(c.symbol||'').toUpperCase();
+      state[c.id].change=c.price_change_24h||0;state[c.id].changePct=c.price_change_percentage_24h||0;
+      state[c.id].high=c.high_24h||0;state[c.id].low=c.low_24h||0;state[c.id].vol=c.total_volume||0;
+    });
+    renderSidebar();
+    renderTape();
+    document.getElementById('stxt').textContent='Crypto loaded';
+  } catch(e) { console.log('CoinGecko error',e); }
+
+  // Select first stock and show it (even without history)
+  selId=STOCKS[0];
   document.getElementById('stxt').textContent='Live';
-  setInterval(refreshCrypto,60000);setInterval(refreshStocks,30000);setInterval(refreshOTC,45000);
+
+  // Load data in background - non-blocking
+  loadDataBackground(allC, allS);
+
+  // Start refresh loops
+  setInterval(refreshCrypto,60000);
+  setInterval(refreshStocks,45000);
+  setInterval(refreshOTC,60000);
   startHotTimer();
   setInterval(function(){if(document.getElementById('page-buynow').classList.contains('active'))renderBuyNow();},30000);
+}
+
+async function loadDataBackground(allC, allS){
+  // Load main stocks first (small list, fast)
+  for(var j=0;j<STOCKS.length;j++){
+    try{
+      var bars=await stockBars(STOCKS[j],'1D',24);
+      if(bars.length){
+        state[STOCKS[j]].history=bars;
+        if(!state[STOCKS[j]].historyByTf)state[STOCKS[j]].historyByTf={};
+        state[STOCKS[j]].historyByTf['1D']=bars;
+        state[STOCKS[j]].price=bars[bars.length-1].price;
+        var o=bars[0].price;
+        state[STOCKS[j]].change=state[STOCKS[j]].price-o;
+        state[STOCKS[j]].changePct=o?(state[STOCKS[j]].change/o)*100:0;
+        refreshMC(STOCKS[j]);
+      }
+    }catch(e){}
+    await sleep(200);
+  }
+
+  // Auto-select first stock now that it has data
+  if(selId===STOCKS[0])buildDetailPanel(STOCKS[0]);
+
+  // Load crypto history (rate limited - space them out)
+  for(var i=0;i<allC.length;i++){
+    try{
+      var h=await fetchCGHist(allC[i],1,'hourly');
+      if(h.length){
+        state[allC[i]].history=h;
+        if(!state[allC[i]].historyByTf)state[allC[i]].historyByTf={};
+        state[allC[i]].historyByTf['1D']=h;
+        refreshMC(allC[i]);
+        if(selId===allC[i])buildDetailPanel(allC[i]);
+      }
+    }catch(e){}
+    await sleep(500);
+  }
+
+  // Load low price stocks
+  for(var k=0;k<LOW_STOCKS.length;k++){
+    try{
+      var lbars=await stockBars(LOW_STOCKS[k],'1D',24);
+      if(lbars.length){
+        state[LOW_STOCKS[k]].history=lbars;
+        if(!state[LOW_STOCKS[k]].historyByTf)state[LOW_STOCKS[k]].historyByTf={};
+        state[LOW_STOCKS[k]].historyByTf['1D']=lbars;
+        state[LOW_STOCKS[k]].price=lbars[lbars.length-1].price;
+        var lo=lbars[0].price;
+        state[LOW_STOCKS[k]].change=state[LOW_STOCKS[k]].price-lo;
+        state[LOW_STOCKS[k]].changePct=lo?(state[LOW_STOCKS[k]].change/lo)*100:0;
+        refreshMC(LOW_STOCKS[k]);
+      }
+    }catch(e){}
+    await sleep(250);
+  }
+
+  // Load OTC last (slowest)
+  for(var m=0;m<OTC_STOCKS.length;m++){
+    try{
+      var ob=await fetchOTCBars(OTC_STOCKS[m]);
+      if(ob.length){
+        state[OTC_STOCKS[m]].history=ob;
+        if(!state[OTC_STOCKS[m]].historyByTf)state[OTC_STOCKS[m]].historyByTf={};
+        state[OTC_STOCKS[m]].historyByTf['1D']=ob;
+        state[OTC_STOCKS[m]].price=ob[ob.length-1].price;
+        var oo2=ob[0].price;
+        state[OTC_STOCKS[m]].change=state[OTC_STOCKS[m]].price-oo2;
+        state[OTC_STOCKS[m]].changePct=oo2?(state[OTC_STOCKS[m]].change/oo2)*100:0;
+      }else{
+        var op=await fetchOTCPrice(OTC_STOCKS[m]);
+        if(op)state[OTC_STOCKS[m]].price=op;
+      }
+      refreshMC(OTC_STOCKS[m]);
+    }catch(e){}
+    await sleep(300);
+  }
+
+  renderSidebar();
 }
 
 async function loadTf(id,tf){
