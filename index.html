@@ -436,33 +436,68 @@ function init(){
 }
 
 async function loadAllPrices(){
-  // Load Binance prices in batches of 100 symbols
-  var batches=[];
-  for(var i=0;i<CRYPTO_SYMS.length;i+=100){
-    batches.push(CRYPTO_SYMS.slice(i,i+100));
-  }
-  for(var bi=0;bi<batches.length;bi++){
-    try{
-      var symsJson='['+batches[bi].map(function(s){return'"'+s+'"';}).join(',')+']';
-      var d=await bFetch(BIN+'/ticker/24hr?symbols='+encodeURIComponent(symsJson));
-      if(Array.isArray(d)){
-        d.forEach(function(t){
+  try{
+    // Fetch ALL 24hr tickers at once - most reliable, no param encoding issues
+    var allTickers=await bFetch(BIN+'/ticker/24hr');
+    if(!Array.isArray(allTickers)||!allTickers.length){
+      // Fallback: try price endpoint
+      var prices=await bFetch(BIN+'/ticker/price');
+      if(Array.isArray(prices)){
+        prices.forEach(function(t){
           var id='bn_'+t.symbol;
           if(!state[id])return;
-          state[id].price=parseFloat(t.lastPrice)||0;
-          state[id].change=parseFloat(t.priceChange)||0;
-          state[id].changePct=parseFloat(t.priceChangePercent)||0;
-          state[id].high=parseFloat(t.highPrice)||0;
-          state[id].low=parseFloat(t.lowPrice)||0;
-          state[id].vol=parseFloat(t.quoteVolume)||0;
+          state[id].price=parseFloat(t.price)||0;
           refreshMC(id);
-          if(selId===id)refreshDetailNums(id);
         });
+        renderTape();renderSB();
       }
-    }catch(e){}
-    await sleep(200);
+      return;
+    }
+    // Build a set of our tracked symbols for fast lookup
+    var tracked=new Set(CRYPTO_SYMS);
+    allTickers.forEach(function(t){
+      if(!t.symbol||!t.symbol.endsWith('USDT'))return;
+      var id='bn_'+t.symbol;
+      var price=parseFloat(t.lastPrice)||0;
+      if(!price)return;
+      // Add to state if we don't have it yet (catches new coins)
+      if(!state[id]){
+        var base=t.symbol.replace('USDT','');
+        state[id]=mkA(id,base,base,'crypto',{binSym:t.symbol});
+      }
+      state[id].price=price;
+      state[id].change=parseFloat(t.priceChange)||0;
+      state[id].changePct=parseFloat(t.priceChangePercent)||0;
+      state[id].high=parseFloat(t.highPrice)||0;
+      state[id].low=parseFloat(t.lowPrice)||0;
+      state[id].vol=parseFloat(t.quoteVolume)||0;
+      refreshMC(id);
+      if(selId===id)refreshDetailNums(id);
+    });
+    renderTape();
+    renderSB();
+  }catch(e){
+    // Last resort: fetch prices one by one for just the top coins
+    var topCoins=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','SHIBUSDT','PEPEUSDT','BONKUSDT','ADAUSDT'];
+    for(var i=0;i<topCoins.length;i++){
+      try{
+        var d=await bFetch(BIN+'/ticker/24hr?symbol='+topCoins[i]);
+        if(d&&d.lastPrice){
+          var id='bn_'+topCoins[i];
+          if(state[id]){
+            state[id].price=parseFloat(d.lastPrice)||0;
+            state[id].changePct=parseFloat(d.priceChangePercent)||0;
+            state[id].change=parseFloat(d.priceChange)||0;
+            state[id].high=parseFloat(d.highPrice)||0;
+            state[id].low=parseFloat(d.lowPrice)||0;
+            refreshMC(id);
+          }
+        }
+      }catch(e2){}
+      await sleep(100);
+    }
+    renderTape();
   }
-  renderTape();
 }
 
 async function refreshStockPrices(){
@@ -519,10 +554,13 @@ function connectBinanceWS(){
   // Stream all crypto mini tickers
   var streams=CRYPTO_SYMS.slice(0,200).map(function(s){return s.toLowerCase()+'@miniTicker';}).join('/');
   binWs=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
+  binWs.onopen=function(){setStatus('Live ⚡ WS connected');};
   binWs.onmessage=function(e){
     try{
       var msg=JSON.parse(e.data);var d=msg.data;if(!d||!d.s)return;
-      var id='bn_'+d.s;if(!state[id])return;
+      var id='bn_'+d.s;
+      // Create state if new coin appears on stream
+      if(!state[id]){var base=d.s.replace('USDT','');state[id]=mkA(id,base,base,'crypto',{binSym:d.s});}
       var price=parseFloat(d.c);var open=parseFloat(d.o);if(!price)return;
       state[id].price=price;
       state[id].change=price-open;
@@ -536,7 +574,8 @@ function connectBinanceWS(){
       if(selId===id)refreshDetailNums(id);
     }catch(err){}
   };
-  binWs.onclose=function(){setTimeout(connectBinanceWS,5000);};
+  binWs.onerror=function(){setTimeout(connectBinanceWS,5000);};
+  binWs.onclose=function(){setStatus('Live ⚡');setTimeout(connectBinanceWS,5000);};
 }
 
 var alpWs=null;
