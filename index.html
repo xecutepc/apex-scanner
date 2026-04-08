@@ -323,8 +323,34 @@ function ftch(url,opts,ms){
 function aFetch(url){return ftch(url,{headers:{'APCA-API-KEY-ID':AK,'APCA-API-SECRET-KEY':AS}},7000).then(function(r){return r.json();}).catch(function(){return{};});}
 
 async function fetchCG(ids){try{var r=await ftch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids='+ids.join(',')+'&order=market_cap_desc&sparkline=false&price_change_percentage=24h',{},8000);return await r.json();}catch(e){return[];}}
-async function fetchCGH(id,days,interval){try{var url='https://api.coingecko.com/api/v3/coins/'+id+'/market_chart?vs_currency=usd&days='+days+(interval?'&interval='+interval:'');var r=await ftch(url,{},8000);var d=await r.json();return(d.prices||[]).map(function(p){return{t:p[0],price:p[1]};});}catch(e){return[];}}
-async function stockBars(sym,tf,lim){var tfm={'10M':'1Min','1H':'5Min','1D':'1Hour','1W':'1Day','1M':'1Day'};var lm={'10M':10,'1H':12,'1D':24,'1W':7,'1M':30};var t=tfm[tf]||'1Hour';var l=lim||(lm[tf]||24);var d=await aFetch(AB+'/stocks/'+sym+'/bars?timeframe='+t+'&limit='+l+'&feed=iex');return(d.bars||[]).map(function(b){return{t:new Date(b.t).getTime(),price:b.c};});}
+async function fetchCGH(id,days,interval){
+  try{
+    // CoinGecko free tier: for days>1 it auto-picks granularity, don't force interval
+    var url='https://api.coingecko.com/api/v3/coins/'+id+'/market_chart?vs_currency=usd&days='+days;
+    if(interval && days===1) url+='&interval='+interval; // only use interval for 1-day
+    var r=await ftch(url,{},10000);
+    var d=await r.json();
+    if(!d.prices) return [];
+    return d.prices.map(function(p){return{t:p[0],price:p[1]};});
+  }catch(e){return[];}
+}
+async function stockBars(sym,tf,lim){
+  var tfm={'10M':'1Min','1H':'5Min','1D':'1Hour','1W':'1Day','1M':'1Day'};
+  var lm={'10M':10,'1H':12,'1D':24,'1W':7,'1M':30};
+  var t=tfm[tf]||'1Hour';
+  var l=lim||(lm[tf]||24);
+  // For 1W and 1M use date range instead of limit for better results
+  var url=AB+'/stocks/'+sym+'/bars?timeframe='+t+'&limit='+l+'&feed=iex&adjustment=raw&sort=asc';
+  if(tf==='1W'){
+    var s=new Date();s.setDate(s.getDate()-7);
+    url=AB+'/stocks/'+sym+'/bars?timeframe=1Day&start='+s.toISOString().slice(0,10)+'&feed=iex&adjustment=raw&sort=asc';
+  } else if(tf==='1M'){
+    var s=new Date();s.setDate(s.getDate()-30);
+    url=AB+'/stocks/'+sym+'/bars?timeframe=1Day&start='+s.toISOString().slice(0,10)+'&feed=iex&adjustment=raw&sort=asc';
+  }
+  var d=await aFetch(url);
+  return(d.bars||[]).map(function(b){return{t:new Date(b.t).getTime(),price:b.c};});
+}
 async function otcBars(sym){try{var to=new Date();var from=new Date(to.getTime()-7*864e5);var f1=from.toISOString().slice(0,10);var t1=to.toISOString().slice(0,10);var r=await ftch(PB+'/v2/aggs/ticker/'+sym+'/range/1/hour/'+f1+'/'+t1+'?adjusted=true&sort=asc&limit=60&apiKey='+PK,{},7000);var d=await r.json();return(d.results||[]).map(function(b){return{t:b.t,price:b.c};});}catch(e){return[];}}
 async function otcPrice(sym){try{var r=await ftch(PB+'/v2/last/trade/'+sym+'?apiKey='+PK,{},5000);var d=await r.json();return d.results?d.results.p:null;}catch(e){return null;}}
 
@@ -531,7 +557,9 @@ async function setTf(tf,el){
 }
 
 function buildDC(id,tf){
-  var s=state[id];if(!s)return;var h=(s.htf&&s.htf[tf])||s.history||[];if(!h.length)return;
+  var s=state[id];if(!s)return;
+  var h=(s.htf&&s.htf[tf]&&s.htf[tf].length)?s.htf[tf]:(s.history||[]);
+  if(!h.length)return;
   var up=s.changePct>=0;var ctx=document.getElementById('dp-cv');if(!ctx)return;if(dChart)dChart.destroy();
   var data=h.map(function(x){return x.price;});
   var labels=h.map(function(x){var d=new Date(x.t);if(tf==='1D'||tf==='10M'||tf==='1H')return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');return(d.getMonth()+1)+'/'+d.getDate();});
