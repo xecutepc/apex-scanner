@@ -402,10 +402,30 @@ function connectBinance(cgIds){
 }
 
 async function loadBg(allC,allS){
-  for(var j=0;j<STOCKS.length;j++){try{var bars=await stockBars(STOCKS[j],'1D',24);if(bars.length){state[STOCKS[j]].history=bars;state[STOCKS[j]].htf['1D']=bars;state[STOCKS[j]].price=bars[bars.length-1].price;var o=bars[0].price;state[STOCKS[j]].change=state[STOCKS[j]].price-o;state[STOCKS[j]].changePct=o?(state[STOCKS[j]].change/o)*100:0;refreshMC(STOCKS[j]);}}catch(e){}await sleep(200);}
+  // Parallel main stocks
+  await Promise.all(STOCKS.map(async function(sym){
+    try{var bars=await stockBars(sym,'1D',24);if(bars.length){state[sym].history=bars;if(!state[sym].htf)state[sym].htf={};state[sym].htf['1D']=bars;state[sym].price=bars[bars.length-1].price;var o=bars[0].price;state[sym].change=state[sym].price-o;state[sym].changePct=o?(state[sym].change/o)*100:0;refreshMC(sym);}}catch(e){}
+  }));
   if(!selId){selId=STOCKS[0];buildDP(STOCKS[0]);}
-  for(var i=0;i<allC.length;i++){try{var h=await fetchCGH(allC[i],1,'hourly');if(h.length){state[allC[i]].history=h;state[allC[i]].htf['1D']=h;refreshMC(allC[i]);if(selId===allC[i])buildDP(allC[i]);}}catch(e){}await sleep(500);}
-  for(var k=0;k<LOW.length;k++){try{var lb=await stockBars(LOW[k],'1D',24);if(lb.length){state[LOW[k]].history=lb;state[LOW[k]].htf['1D']=lb;state[LOW[k]].price=lb[lb.length-1].price;var lo=lb[0].price;state[LOW[k]].change=state[LOW[k]].price-lo;state[LOW[k]].changePct=lo?(state[LOW[k]].change/lo)*100:0;refreshMC(LOW[k]);}}catch(e){}await sleep(250);}
+  // Parallel crypto loading in batches of 4
+  var cBatches=[];for(var ci=0;ci<allC.length;ci+=4)cBatches.push(allC.slice(ci,ci+4));
+  for(var cbi=0;cbi<cBatches.length;cbi++){
+    await Promise.all(cBatches[cbi].map(async function(cid){
+      try{
+        var h=await fetchCGH(cid,1,'hourly');
+        if(h.length){state[cid].history=h;if(!state[cid].htf)state[cid].htf={};state[cid].htf['1D']=h;refreshMC(cid);if(selId===cid)buildDP(cid);}
+      }catch(e){}
+    }));
+    await sleep(700);
+  }
+  // Low stocks parallel batches of 3
+  var lBatches=[];for(var li=0;li<LOW.length;li+=3)lBatches.push(LOW.slice(li,li+3));
+  for(var lbi=0;lbi<lBatches.length;lbi++){
+    await Promise.all(lBatches[lbi].map(async function(sym){
+      try{var lb=await stockBars(sym,'1D',24);if(lb.length){state[sym].history=lb;if(!state[sym].htf)state[sym].htf={};state[sym].htf['1D']=lb;state[sym].price=lb[lb.length-1].price;var lo=lb[0].price;state[sym].change=state[sym].price-lo;state[sym].changePct=lo?(state[sym].change/lo)*100:0;refreshMC(sym);}}catch(e){}
+    }));
+    await sleep(400);
+  }
   for(var m=0;m<OTC.length;m++){try{var ob=await otcBars(OTC[m]);if(ob.length){state[OTC[m]].history=ob;state[OTC[m]].htf['1D']=ob;state[OTC[m]].price=ob[ob.length-1].price;var oo=ob[0].price;state[OTC[m]].change=state[OTC[m]].price-oo;state[OTC[m]].changePct=oo?(state[OTC[m]].change/oo)*100:0;}else{var op=await otcPrice(OTC[m]);if(op)state[OTC[m]].price=op;}refreshMC(OTC[m]);}catch(e){}await sleep(300);}
   renderSB();
 }
@@ -488,11 +508,25 @@ async function setTf(tf,el){
   document.querySelectorAll('.tf-btn').forEach(function(b){b.classList.remove('active');});
   if(el)el.classList.add('active');
   var s=state[selId];if(!s)return;
-  if(s.htf&&s.htf[tf]){buildDC(selId,tf);return;}
+  if(s.htf&&s.htf[tf]&&s.htf[tf].length){buildDC(selId,tf);return;}
   var h=[];
-  if(s.type==='crypto'){var cgm={'10M':1,'1H':1,'1D':1,'1W':7,'1M':30};var cgi={'10M':'minutely','1H':'hourly','1D':'hourly','1W':'daily','1M':'daily'};h=await fetchCGH(selId,cgm[tf]||1,cgi[tf]||'hourly');if(tf==='10M')h=h.slice(-10);if(tf==='1H')h=h.slice(-12);}
-  else{h=await stockBars(selId,tf);}
-  if(!s.htf)s.htf={};if(h.length)s.htf[tf]=h;
+  try{
+    if(s.type==='crypto'){
+      if(tf==='10M'){h=await fetchCGH(selId,1,'minutely');h=h.slice(-10);}
+      else if(tf==='1H'){h=await fetchCGH(selId,1,'minutely');h=h.slice(-60);}
+      else if(tf==='1D'){h=await fetchCGH(selId,1,'hourly');}
+      else if(tf==='1W'){h=await fetchCGH(selId,7,'hourly');}
+      else if(tf==='1M'){h=await fetchCGH(selId,30,'daily');}
+    } else {
+      if(tf==='10M'){h=await stockBars(selId,'10M',10);}
+      else if(tf==='1H'){h=await stockBars(selId,'1H',12);}
+      else if(tf==='1D'){h=await stockBars(selId,'1D',24);}
+      else if(tf==='1W'){h=await stockBars(selId,'1W',7);}
+      else if(tf==='1M'){h=await stockBars(selId,'1M',30);}
+    }
+  }catch(e){}
+  if(!s.htf)s.htf={};
+  if(h&&h.length){s.htf[tf]=h;}
   buildDC(selId,tf);
 }
 
@@ -585,20 +619,26 @@ function buildCardChart(canvasId, tfBarId, s, defaultColor){
   }
 
   async function loadTfData(tf){
-    if(s.htf && s.htf[tf]){ drawChart(s.htf[tf]); return; }
+    if(s.htf && s.htf[tf] && s.htf[tf].length){ drawChart(s.htf[tf]); return; }
     var h = [];
-    if(s.type === 'crypto'){
-      var cgm={'10M':1,'1H':1,'1D':1,'1W':7,'1M':30};
-      var cgi={'10M':'minutely','1H':'hourly','1D':'hourly','1W':'daily','1M':'daily'};
-      h = await fetchCGH(s.id, cgm[tf]||1, cgi[tf]||'hourly');
-      if(tf==='10M') h=h.slice(-10);
-      if(tf==='1H') h=h.slice(-12);
-    } else {
-      h = await stockBars(s.id, tf);
-    }
+    try {
+      if(s.type === 'crypto'){
+        if(tf==='10M'){ h=await fetchCGH(s.id,1,'minutely'); h=h.slice(-10); }
+        else if(tf==='1H'){ h=await fetchCGH(s.id,1,'minutely'); h=h.slice(-60); }
+        else if(tf==='1D'){ h=await fetchCGH(s.id,1,'hourly'); }
+        else if(tf==='1W'){ h=await fetchCGH(s.id,7,'hourly'); }
+        else if(tf==='1M'){ h=await fetchCGH(s.id,30,'daily'); }
+      } else {
+        if(tf==='10M'){ h=await stockBars(s.id,'10M',10); }
+        else if(tf==='1H'){ h=await stockBars(s.id,'1H',12); }
+        else if(tf==='1D'){ h=await stockBars(s.id,'1D',24); }
+        else if(tf==='1W'){ h=await stockBars(s.id,'1W',7); }
+        else if(tf==='1M'){ h=await stockBars(s.id,'1M',30); }
+      }
+    } catch(e){}
     if(!s.htf) s.htf={};
-    if(h.length) s.htf[tf] = h;
-    drawChart(h.length ? h : s.history);
+    if(h && h.length){ s.htf[tf]=h; drawChart(h); }
+    else if(s.history && s.history.length){ drawChart(s.history); }
   }
 
   // Attach tf bar events
