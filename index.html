@@ -436,68 +436,73 @@ function init(){
 }
 
 async function loadAllPrices(){
+  // Step 1: Get ALL prices instantly (~60KB, fast)
+  // /ticker/price returns {symbol, price} for everything
   try{
-    // Fetch ALL 24hr tickers at once - most reliable, no param encoding issues
-    var allTickers=await bFetch(BIN+'/ticker/24hr');
-    if(!Array.isArray(allTickers)||!allTickers.length){
-      // Fallback: try price endpoint
-      var prices=await bFetch(BIN+'/ticker/price');
-      if(Array.isArray(prices)){
-        prices.forEach(function(t){
-          var id='bn_'+t.symbol;
-          if(!state[id])return;
-          state[id].price=parseFloat(t.price)||0;
-          refreshMC(id);
-        });
-        renderTape();renderSB();
-      }
+    var prices=await bFetch(BIN+'/ticker/price');
+    if(Array.isArray(prices)&&prices.length>0){
+      prices.forEach(function(t){
+        if(!t.symbol||!t.symbol.endsWith('USDT'))return;
+        var id='bn_'+t.symbol;
+        if(!state[id]){
+          var base=t.symbol.replace('USDT','');
+          state[id]=mkA(id,base,base,'crypto',{binSym:t.symbol});
+        }
+        var price=parseFloat(t.price)||0;
+        if(price>0)state[id].price=price;
+      });
+      renderSB();
+      renderTape();
+    }
+  }catch(e){}
+
+  // Step 2: Get 24hr stats for our specific coins in one call
+  // Use the correct Binance format: symbols=["BTC","ETH"]
+  try{
+    var symsParam='["'+CRYPTO_SYMS.join('","')+'"]';
+    var stats=await bFetch(BIN+'/ticker/24hr?symbols='+symsParam);
+    if(Array.isArray(stats)&&stats.length>0){
+      stats.forEach(function(t){
+        var id='bn_'+t.symbol;
+        if(!state[id])return;
+        state[id].price=parseFloat(t.lastPrice)||state[id].price;
+        state[id].change=parseFloat(t.priceChange)||0;
+        state[id].changePct=parseFloat(t.priceChangePercent)||0;
+        state[id].high=parseFloat(t.highPrice)||0;
+        state[id].low=parseFloat(t.lowPrice)||0;
+        state[id].vol=parseFloat(t.quoteVolume)||0;
+        refreshMC(id);
+        if(selId===id)refreshDetailNums(id);
+      });
+      renderSB();
+      renderTape();
       return;
     }
-    // Build a set of our tracked symbols for fast lookup
-    var tracked=new Set(CRYPTO_SYMS);
-    allTickers.forEach(function(t){
-      if(!t.symbol||!t.symbol.endsWith('USDT'))return;
-      var id='bn_'+t.symbol;
-      var price=parseFloat(t.lastPrice)||0;
-      if(!price)return;
-      // Add to state if we don't have it yet (catches new coins)
-      if(!state[id]){
-        var base=t.symbol.replace('USDT','');
-        state[id]=mkA(id,base,base,'crypto',{binSym:t.symbol});
-      }
-      state[id].price=price;
-      state[id].change=parseFloat(t.priceChange)||0;
-      state[id].changePct=parseFloat(t.priceChangePercent)||0;
-      state[id].high=parseFloat(t.highPrice)||0;
-      state[id].low=parseFloat(t.lowPrice)||0;
-      state[id].vol=parseFloat(t.quoteVolume)||0;
-      refreshMC(id);
-      if(selId===id)refreshDetailNums(id);
-    });
-    renderTape();
-    renderSB();
-  }catch(e){
-    // Last resort: fetch prices one by one for just the top coins
-    var topCoins=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','SHIBUSDT','PEPEUSDT','BONKUSDT','ADAUSDT'];
-    for(var i=0;i<topCoins.length;i++){
-      try{
-        var d=await bFetch(BIN+'/ticker/24hr?symbol='+topCoins[i]);
-        if(d&&d.lastPrice){
-          var id='bn_'+topCoins[i];
-          if(state[id]){
-            state[id].price=parseFloat(d.lastPrice)||0;
-            state[id].changePct=parseFloat(d.priceChangePercent)||0;
-            state[id].change=parseFloat(d.priceChange)||0;
-            state[id].high=parseFloat(d.highPrice)||0;
-            state[id].low=parseFloat(d.lowPrice)||0;
-            refreshMC(id);
-          }
+  }catch(e){}
+
+  // Step 3: Fallback - fetch each coin individually (slower but works)
+  for(var i=0;i<Math.min(CRYPTO_SYMS.length,50);i++){
+    try{
+      var sym=CRYPTO_SYMS[i];
+      var d=await bFetch(BIN+'/ticker/24hr?symbol='+sym);
+      if(d&&d.lastPrice){
+        var id='bn_'+sym;
+        if(state[id]){
+          state[id].price=parseFloat(d.lastPrice)||0;
+          state[id].changePct=parseFloat(d.priceChangePercent)||0;
+          state[id].change=parseFloat(d.priceChange)||0;
+          state[id].high=parseFloat(d.highPrice)||0;
+          state[id].low=parseFloat(d.lowPrice)||0;
+          state[id].vol=parseFloat(d.quoteVolume)||0;
+          refreshMC(id);
+          if(selId===id)refreshDetailNums(id);
         }
-      }catch(e2){}
-      await sleep(100);
-    }
-    renderTape();
+      }
+    }catch(e){}
+    if(i%10===9){renderSB();renderTape();await sleep(100);}
   }
+  renderSB();
+  renderTape();
 }
 
 async function refreshStockPrices(){
