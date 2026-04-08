@@ -210,8 +210,11 @@ body>*{position:relative;z-index:1;}
     </svg>
     <span id="hdr-title">APEX Scanner</span>
   </div>
-  <div style="display:flex;align-items:center;gap:12px;">
-    <div class="live-badge"><div class="live-dot"></div><span class="live-text" id="stxt">Loading</span></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+    <div style="text-align:right;display:flex;flex-direction:column;gap:2px;">
+      <div class="live-badge"><div class="live-dot"></div><span class="live-text" id="stxt">Loading</span></div>
+      <span id="last-updated" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;text-align:right;"></span>
+    </div>
     <span id="clk"></span>
   </div>
 </div>
@@ -403,6 +406,25 @@ function cgFetch(url){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+var lastCryptoUpdate=null;
+var lastStockUpdate=null;
+
+function setLastUpdated(){
+  lastCryptoUpdate=new Date();
+  var el=document.getElementById('last-updated');
+  if(el)el.textContent='Crypto: '+lastCryptoUpdate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function setStockUpdated(){
+  lastStockUpdate=new Date();
+  // Append stock update time if element exists
+  var el=document.getElementById('last-updated');
+  if(el){
+    var cryptoStr=lastCryptoUpdate?'Crypto: '+lastCryptoUpdate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · ':'';
+    el.textContent=cryptoStr+'Stocks: '+lastStockUpdate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+}
+
 function init(){
   // Create state for all assets immediately
   CRYPTO_SYMS.forEach(function(sym){
@@ -423,14 +445,19 @@ function init(){
   loadAllPrices();
 
   // Refresh loops
-  setInterval(loadAllPrices,30000);
+  setInterval(loadAllPrices,60000);
   setInterval(refreshStockPrices,20000);
+  // Countdown to next crypto refresh
+  var cryptoRefreshCd=60;
+  setInterval(function(){
+    cryptoRefreshCd--;
+    if(cryptoRefreshCd<=0)cryptoRefreshCd=60;
+    var w=Object.keys(state).filter(function(id){return state[id].price>0;}).length;
+    setStatus('Live ⚡ '+w+' assets · refresh in '+cryptoRefreshCd+'s');
+  },1000);
   setInterval(renderTape,8000);
   setInterval(scanForNewAssets,3600000); // scan for new assets every hour
-  setInterval(function(){
-    var w=Object.keys(state).filter(function(id){return state[id].price>0;}).length;
-    setStatus('Live ⚡ '+w+' assets');
-  },5000);
+
   startHot();
   setInterval(function(){if(document.getElementById('page-bn').classList.contains('active'))renderBN();},20000);
   setInterval(function(){if(document.getElementById('page-chaos').classList.contains('active'))renderChaos();},20000);
@@ -467,6 +494,7 @@ async function loadAllPrices(){
       });
       renderSB();
       renderTape();
+      setLastUpdated();
     }
   }catch(e){}
 
@@ -491,6 +519,7 @@ async function loadAllPrices(){
       });
       renderSB();
       renderTape();
+      setLastUpdated();
     }
   }catch(e){}
 }
@@ -521,6 +550,7 @@ async function refreshStockPrices(){
     }catch(e){}
     await sleep(300);
   }
+  setStockUpdated();
 }
 
 // Hourly scan for new assets on Binance and Alpaca
